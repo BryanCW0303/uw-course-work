@@ -1,0 +1,63 @@
+---
+title: "Question 2"
+output: pdf_document
+date: "2024-12-01"
+---
+
+\section{Part(a)}
+
+Firstly, we computed $OR_{observed}$.
+
+```{r}
+original_data <- UCBAdmissions[,,1]
+original_data
+ob_or_value <- UCBAdmissions[1,1,1] * UCBAdmissions[2,2,1] / (UCBAdmissions[1,2,1] * UCBAdmissions[2,1,1])
+ob_or_value
+```
+
+We then created a new data frame with the following format.
+
+```{r}
+set.seed(2427348)
+gender <- c(rep(c('Male'), UCBAdmissions[1,1,1] + UCBAdmissions[2,1,1]),
+            rep(c('Female'), UCBAdmissions[1,2,1] + UCBAdmissions[2,2,1]))
+outcome <- c(rep(c('Accepted'), UCBAdmissions[1,1,1]), rep(c('Rejected'), UCBAdmissions[2,1,1]),
+             rep(c('Accepted'), UCBAdmissions[1,2,1]), rep(c('Rejected'), UCBAdmissions[2,2,1]))
+data <- data.frame(gender, outcome)
+data[1:10,]
+```
+
+Then, we can perform bootstrapping on this data frame to generate bootstrap samples.
+
+```{r}
+n <- 500
+B <- 10000
+bt_or_value <- numeric(B)
+for (i in 1:B){
+  sample_data <- data[sample(nrow(data), size = n, replace = TRUE),]
+  sample_table <- table(sample_data$gender, sample_data$outcome)
+  bt_or_value[i] <- sample_table[2,1] * sample_table[1,2] / (sample_table[1,1] * sample_table[2,2])
+}
+```
+
+Finally, we can derive MSE of the odds ratio from bootstrap samples.
+
+```{r}
+bt_mse <- mean((bt_or_value - ob_or_value)^2)
+bt_mse
+```
+
+\section{Part(b)}
+
+To test $H_0:OR=1; H_A:OR \neq 1$, p-value can be derived by calculating the number of bootstrapping odd ratios that are as extreme as the observed odd ratio:
+
+```{r}
+p_value <- mean(abs(bt_or_value) >= abs(ob_or_value))
+p_value 
+```
+
+At a significance level of $\alpha = 0.05$, we do not reject null hypothesis, meaning that no gender bias in the UCB admission data.
+
+\section{Part(c)}
+
+Since the multinomial distribution accurately describes the observed data, and when sample size $n$ becomes large enough, the empiricial distribution of the observed data will converge to the multinomial distribution, indicating that both of parametric bootstrap and empiricial bootstrap are sampling from the same distribution. Therefore, there are the same procedure. 
