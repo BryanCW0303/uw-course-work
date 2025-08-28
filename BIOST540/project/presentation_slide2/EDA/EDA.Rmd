@@ -1,0 +1,189 @@
+---
+title: "presentation slide 2"
+author: "Bryan Ng, 2427348"
+date: "2025-05-10"
+output: pdf_document
+---
+
+```{r, include=FALSE, warning=FALSE}
+library(readr)
+library(dplyr)
+library(ggplot2)
+library(GGally)
+library(forcats)
+library(tidyr)
+library(ggbeeswarm)
+library(gridExtra)
+library(patchwork)
+library(ggcorrplot)
+```
+
+
+```{r, echo=FALSE}
+set.seed(2427348)
+df <- read_csv('C:/Users/ncwbr/Desktop/frmgham2.csv')
+summary(df)
+```
+
+```{r, echo=FALSE}
+vars <- c("SYSBP","DIABP","TOTCHOL","GLUCOSE",
+          "HDLC","LDLC","BMI","HEARTRTE")
+df_corr <- df %>% 
+  select(all_of(vars)) %>%
+  filter(complete.cases(.))
+
+corr_mat <- cor(df_corr, use = "pairwise.complete.obs")
+
+ggcorrplot(
+  corr_mat,
+  hc.order   = FALSE,       
+  type       = "full",      
+  lab        = TRUE,        
+  lab_size   = 4,           
+  method     = "square",    
+  colors     = c("#4C1D95", "white", "#DC3220"),
+  title      = "Correlation Plot of Key Biomarkers",
+  ggtheme    = theme_minimal() +
+               theme(
+                 axis.text.x = element_text(angle = 45, hjust = 1),
+                 plot.title  = element_text(hjust = 0.5)
+               )
+)
+```
+
+```{r, echo=FALSE}
+n_sample <- 100
+
+ids <- sample(unique(df$RANDID), n_sample)
+
+df_sub <- df %>%
+  filter(RANDID %in% ids) %>%
+  drop_na(TIME, SYSBP, DIABP)
+
+df_long <- df_sub %>%
+  pivot_longer(
+    cols     = c(SYSBP, DIABP),
+    names_to = "Outcome",
+    values_to= "Value"
+  )
+
+ggplot(df_long, aes(x = TIME, y = Value, group = factor(RANDID), color = factor(RANDID))) +
+  geom_line(alpha = 0.6) +
+  facet_wrap(~Outcome, scales = "free_y") +
+  labs(
+    x     = "Time",
+    y     = "Blood Pressure",
+    title = paste0("Spaghetti Plot (n=", n_sample, " random subjects)"),
+    color = "Participant"
+  ) +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+
+```{r, echo=FALSE}
+baseline <- df %>% 
+  filter(PERIOD == 1, TIME == 0) %>%
+  transmute(
+    RANDID,
+    SexCat = factor(SEX-1, levels=c(0,1), labels=c("0","1")),
+    AgeCat = factor(if_else(AGE<40, "<40", ">=40")),
+    BMICat = factor(if_else(BMI<24, "<24", ">=24"))
+  )
+
+df2 <- df %>% left_join(baseline, by="RANDID")
+
+plot_by_period <- function(data, outcome, group, group_lab, flip_axes=FALSE){
+  p <- data %>%
+    group_by(!!sym(group), PERIOD) %>%
+    summarise(
+      m  = mean(!!sym(outcome), na.rm=TRUE),
+      sd = sd(  !!sym(outcome), na.rm=TRUE),
+      n  = sum(!is.na(!!sym(outcome))),
+      .groups="drop"
+    ) %>%
+    mutate(se = sd/sqrt(n)) %>%
+    ggplot(aes_string(x= if(flip_axes) "m" else "PERIOD",
+                      y= if(flip_axes) "PERIOD" else "m",
+                      color = group,
+                      group = group)) +
+      geom_line(size=1) +
+      geom_point(size=2) +
+      { if(!flip_axes) 
+          geom_ribbon(aes(ymin = m-se, ymax = m+se, fill = !!sym(group)),
+                      alpha=0.2, colour=NA) 
+        else 
+          geom_errorbarh(aes(xmin=m-se, xmax=m+se, height=0.2, fill=!!sym(group)),
+                         alpha=0.2, colour=NA)
+      } +
+      labs(
+        x = if(flip_axes) group_lab else "Period",
+        y = if(flip_axes) "Period"     else paste("Mean", outcome),
+        title = paste0(outcome, " over PERIOD by ", group_lab)
+      ) +
+      theme_minimal() +
+      { if(flip_axes) coord_flip() }
+  
+  return(p)
+}
+
+p1 <- plot_by_period(df2, "SYSBP", "SexCat", "Sex")
+p2 <- plot_by_period(df2, "DIABP", "SexCat", "Sex")
+p3 <- plot_by_period(df2, "SYSBP", "AgeCat", "Age")
+p4 <- plot_by_period(df2, "DIABP", "AgeCat", "Age")
+p5 <- plot_by_period(df2, "SYSBP", "BMICat", "BMI")
+p6 <- plot_by_period(df2, "DIABP", "BMICat", "BMI")
+
+fig1 <- (p1 | p2) /    
+            (p3 | p4) /    
+            (p5 | p6) +    
+  plot_layout(guides = "collect") &   
+  theme(legend.position = "bottom")    
+
+print(fig1)
+```
+
+```{r, warning=FALSE, echo=FALSE}
+df2 <- df2 %>%
+  mutate(
+    BPMEDS    = factor(BPMEDS,    levels = c(1, 0), labels = c(0, 1)),
+    CURSMOKE  = factor(CURSMOKE,  levels = c(1, 0), labels = c(0, 1))
+  )
+
+p_bpm_sys  <- plot_by_period(df2, "SYSBP",   "BPMEDS",   "BPMEDS")
+p_bpm_dia  <- plot_by_period(df2, "DIABP",   "BPMEDS",   "BPMEDS")
+
+p_smk_sys  <- plot_by_period(df2, "SYSBP",   "CURSMOKE", "CURSMOKE")
+p_smk_dia  <- plot_by_period(df2, "DIABP",   "CURSMOKE", "CURSMOKE")
+
+fig2 <- (p_bpm_sys | p_bpm_dia) /
+        (p_smk_sys | p_smk_dia) +
+  plot_layout(guides = "collect", heights = c(1,1)) &
+  theme(legend.position = "bottom")
+
+print(fig2)
+```
+
+```{r, warning=FALSE, echo=FALSE}
+df_long <- df %>%
+  select(SYSBP, DIABP) %>%
+  pivot_longer(
+    cols      = c(SYSBP, DIABP),
+    names_to  = "Outcome",
+    values_to = "Value"
+  )
+
+ggplot(df_long, aes(x = Value, fill = Outcome)) +
+  geom_histogram(bins = 30, color = "white", alpha = 0.8) +
+  facet_wrap(~ Outcome, scales = "free_x") +
+  labs(
+    title = "Histograms of SYSBP and DIABP",
+    x     = "Value",
+    y     = "Count"
+  ) +
+  theme_minimal() +
+  theme(
+    legend.position = "none",
+    strip.text       = element_text(face = "bold")
+  )
+```
+
