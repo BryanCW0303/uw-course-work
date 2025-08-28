@@ -1,0 +1,192 @@
+---
+title: "STAT534HW4"
+author: "Bryan Ng, 2427348"
+date: "2025-05-05"
+output: pdf_document
+---
+
+\section{Problem 1}
+
+```{r}
+inverseLogit <- function(x) {
+  return (exp(x) / (1 + exp(x)))
+}
+
+inverseLogit2 <- function(x) {
+  return (exp(x) / (1 + exp(x)) ^ 2)
+}
+
+getPi <- function(x, beta) {
+  x0 <- cbind(rep(1, length(x)), x)
+  return (inverseLogit(x0 %*% beta))
+}
+
+getPi2 <- function(x, beta) {
+  x0 <- cbind(rep(1, length(x)), x)
+  return (inverseLogit2(x0 %*% beta))
+}
+
+logisticLoglik <- function(y, x, beta) {
+  Pi <- getPi(x, beta)
+  return (sum(y * log(Pi)) + sum((1 - y) * log(1 - Pi)))
+}
+
+logisticLoglik_star <- function(y, x, beta) {
+  Loglik <- logisticLoglik(y, x, beta)
+  return (-log(2 * pi) - (1 / 2) * (beta[1]^2 + beta[2]^2) + Loglik)
+}
+
+getGradient <- function(y, x, beta) {
+  gradient <- matrix(0, 2, 1)
+  Pi = getPi(x, beta)
+  
+  gradient[1, 1] <- sum(y - Pi) - beta[1]
+  gradient[2, 1] <- sum((y - Pi) * x) - beta[2]
+  
+  return (gradient)
+}
+
+getHessian <- function(y, x, beta){
+  hessian <- matrix(0, 2, 2)
+  Pi2 <- getPi2(x, beta)
+  
+  hessian[1, 1] <- sum(Pi2) + 1
+  hessian[1, 2] <- sum(Pi2 * x)
+  hessian[2, 1] <- hessian[1, 2]
+  hessian[2, 2] <- sum(Pi2 * x^2) + 1
+  return (-hessian)
+}
+
+getcoefNR <- function(response, explanatory, beta) {
+  beta <- matrix(0, 2, 1)
+  y <- data[, response]
+  x <- data[, explanatory]
+  currentLoglik <- logisticLoglik_star(y, x, beta)
+  
+  while(1)
+  {
+    # Compute update: new beta = old beta - solve(H) * gradient
+    H <- getHessian(y, x, beta)
+    G <- getGradient(y, x, beta)
+    newBeta <- beta - drop(solve(H) %*% G)
+    newLoglik <- logisticLoglik_star(y, x, newBeta)
+    
+    if (newLoglik < currentLoglik)
+    {
+      cat("COGING ERROR!!\n")
+      break
+    }
+    
+    # Update beta and log-posterior
+    beta <- newBeta
+    
+    # Stop if improvement is very small
+    if (newLoglik - currentLoglik < 1e-4){
+      break
+    }
+    currentLoglik <- newLoglik
+  }
+  return (beta)
+}
+
+# Laplace approximation of marginal likelihood p(D)
+getLaplaceApprox <- function(response, explanatory, data, betaMode) {
+  y <- data[, response]
+  x <- data[, explanatory]
+  beta <- betaMode
+  # Compute penalized log-posterior at mode
+  Loglik_star <- logisticLoglik_star(y, x, beta)
+  H <- getHessian(y, x, beta)
+  return (log(2 * pi) + Loglik_star - 0.5 * log(det(-H)))
+}
+```
+
+\section{Problem 2}
+
+```{r}
+getPosteriorMeans <- function(response, explanatory, data, betaMode, niter = 10000) {
+  y <- data[, response]
+  x <- data[, explanatory]
+  
+  # Initialize chain
+  beta <- betaMode
+  beta_chain <- matrix(0, nrow = niter, ncol = 2)
+  
+  # Sampling loop from 1 to niter
+  for (i in seq_len(niter)) {             
+    H <- getHessian(y, x, beta)
+    beta_temp <- mvrnorm(1, mu = beta, Sigma = -solve(H))
+    diff <- logisticLoglik_star(y, x, beta_temp) - logisticLoglik_star(y, x, beta)
+    
+    # Metropolis acceptance
+    if (diff >= 0 || log(runif(1)) <= diff) {
+      beta <- beta_temp
+    }
+    beta_chain[i, ] <- beta
+  }
+  # Compute sample means
+  beta_mean <- apply(beta_chain, 2, mean)
+  return(beta_mean)
+}
+```
+
+\section{Problem 3}
+
+```{r}
+bayesLogistic <- function(apredictor, response, data, niter){
+  # Find the MAP estimate of beta via Newton–Raphson
+  betaMode <- getcoefNR(response, apredictor, data)
+  log_marglik <- getLaplaceApprox(response, apredictor, data, betaMode)
+  beta_mean <- getPosteriorMeans(response, apredictor, data, betaMode, niter)
+  
+  list(apredictor = apredictor,
+       logmarglik = log_marglik,
+       beta0bayes = beta_mean[1],
+       beta1bayes = beta_mean[2],
+       beta0mle = betaMode[1],
+       beta1mle = betaMode[2])
+}
+
+main <- function(datafile, NumberOfIterations, clusterSize)
+{
+  data = read.table(datafile, header=FALSE);
+  
+  response = ncol(data);
+  lastPredictor = ncol(data)-1;
+  
+  cl <- makeCluster(clusterSize, type = "SOCK")
+  clusterExport(cl, "data")
+  clusterExport(cl, c("bayesLogistic",
+                      "getcoefNR", "getLaplaceApprox", "getPosteriorMeans",
+                      "inverseLogit", "inverseLogit2",
+                      "getPi", "getPi2",
+                      "logisticLoglik", "logisticLoglik_star",
+                      "getGradient", "getHessian"))
+  clusterEvalQ(cl, library(MASS))
+  
+  results = clusterApply(cl, 1: lastPredictor, bayesLogistic,
+                         response, data,NumberOfIterations);
+  
+  for(i in 1: lastPredictor)
+  {
+    cat('Regression of Y on explanatory variable ',results[[i]]$apredictor,
+        ' has log marginal likelihood ',results[[i]]$logmarglik,
+        '\n',
+        ' with beta0 = ',results[[i]]$beta0bayes,' (',results[[i]]$beta0mle,')',
+        ' and beta1 = ',results[[i]]$beta1bayes,' (',results[[i]]$beta1mle,')',
+        '\n');    
+  }
+  
+  stopCluster(cl);
+}
+
+library(MASS)
+library(parallel)
+library(snow)
+
+path <- "C:/Users/ncwbr/Desktop/534binarydata.txt"
+data <- as.matrix(read.table(path, header = FALSE))
+set.seed(2427348)
+response <- 61
+main(path, 10000, 10)
+```

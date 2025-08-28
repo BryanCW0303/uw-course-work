@@ -1,0 +1,79 @@
+---
+title: "534hw1"
+author: "Bryan Ng, 2427348"
+date: "2025-04-07"
+output: pdf_document
+---
+
+\section{Problem 1}
+
+```{r}
+det <- function(R){
+  eigenvalues <- eigen(R, only.values = TRUE)$values
+  det <- prod(abs(eigenvalues))
+  return(det)
+}
+
+logdet <- function(R){
+  return(log(det(R)))
+}
+```
+
+We verify the function we wrote by computing the logarithm of the determinant of a $2 \times 2$ matrix:
+$$
+M = \begin{bmatrix}
+3 & 1 \\
+2 & 4
+\end{bmatrix}
+$$
+The determinant of $M$ is:
+$$\det(M) = 3 \times 4 - 1 \times 2 = 10$$
+Taking the logarithm:
+$$\log(\det(M)) = \log 10 \approx 2.302585$$
+
+```{r}
+M <- matrix(c(3,1,2,4), nrow = 2, byrow = TRUE)
+cat("The logarithm of determinant M:", logdet(M), "\n")
+```
+This result aligns with our value of $\text{log}(\text{det}(M))$.
+
+\section{Problem 2}
+
+The marginal likelihood of [1|A] is given by: 
+$$
+p(D_1, D_A \mid [1|A]) =
+\frac{\Gamma\left(\frac{n + |A| + 2}{2}\right)}{\Gamma\left(\frac{|A| + 2}{2}\right)} \cdot
+(\det M_A)^{-1/2} \cdot
+\left(1 + D_1^{T} D_1 - D_1^{T} D_A M_A^{-1} D_A^{T} D_1 \right)^{- (n + |A| + 2)/2}
+$$
+Taking the logarithm we have:
+$$
+\log p(D_1, D_A \mid [1|A]) = \log \Gamma\left(\frac{n + |A| + 2}{2}\right) - \log \Gamma\left(\frac{|A| + 2}{2}\right) 
+- \frac{1}{2} \log (\det M_A)
+- \frac{n + |A| + 2}{2} \log(1 + D_1^{T} D_1 - D_1^{T} D_A M_A^{-1} D_A^{T} D_1)
+$$
+
+```{r}
+logmarglik <- function(data, A){
+  n = nrow(data)
+  a = length(A)
+  
+  D_1 = data[, 1]
+  D_A = data[, A]
+  I_A <- diag(a)
+  M_A = I_A + t(D_A) %*% D_A
+  
+  first_term <- lgamma((n + a + 2) / 2) - lgamma((a + 2) / 2)
+  second_term <- (-1 / 2) * logdet(M_A)
+  third_term <- -(n + a + 2) / 2 * log((1 + t(D_1) %*% D_1 - t(D_1) %*% D_A %*% solve(M_A) %*% t(D_A) %*% D_1))
+  
+  ans <- first_term + second_term + third_term
+  return (ans)
+}
+
+mypath <- "C:/Users/ncwbr/Desktop/erdata.txt"
+data <- as.matrix(read.table(mypath, header = FALSE))
+cat("The dimension of the data:", dim(data), "\n")
+cat("Result:", logmarglik(data, c(2,5,10)), "\n")
+```
+
