@@ -1,0 +1,327 @@
+---
+title: "BIOST540HW3"
+author: "Bryan Ng, 2427348"
+date: "2025-05-28"
+output: pdf_document
+---
+
+```{r, warning=FALSE, include=FALSE}
+library(lme4)
+library(geepack)
+library(readr)
+library(dplyr)
+library(tidyverse)
+```
+
+\section{Problme 1}
+
+\subsection{a)}
+
+```{r, warning=FALSE, include=FALSE}
+df <- read_csv("C:/Users/ncwbr/Desktop/uk_sub.csv")
+```
+
+```{r, warning=FALSE, echo=FALSE}
+df <- read_csv("C:/Users/ncwbr/Desktop/uk_sub.csv")
+df$sex <- relevel(factor(df$sex_dv), ref="Male")
+
+m.lmm <- lmer(scghq1_dv ~ age_dv * sex + (1 | pidp), data = df)
+summary(m.lmm)
+
+m.noInt <- update(m.lmm, . ~ . - age_dv:sex)
+anova(m.noInt, m.lmm)
+```
+
+The age$\times$sex interaction estimate is 
+$$
+\hat\beta_{\mathrm{age}\times\mathrm{sex}} = 0.017 \quad (\mathrm{SE} = 0.039,\; t \approx 0.43),
+$$
+and the likelihood‐ratio test comparing models with vs.\ without this term yields
+$$
+\chi^2(1) = 0.186,\; p = 0.67.
+$$
+Therefore, we fail to reject the null hypothesis of no interaction: the decline in well-being with age is essentially the same for Males and Females in this sample.
+
+
+\subsection{b)}
+
+We fitted three GEE models with independence, exchangeable, and AR(1) working correlations and compared them using QIC.
+
+```{r, warning=FALSE, echo=FALSE}
+gee.ind <- geeglm(scghq1_dv ~ age_dv * sex,
+                  id = pidp, corstr = "independence",
+                  data = df, family = gaussian)
+
+gee.exc <- update(gee.ind, corstr = "exchangeable")
+
+gee.ar1 <- update(gee.ind, corstr = "ar1")
+
+summary(gee.ind)
+summary(gee.exc)
+summary(gee.ar1)
+```
+
+We observed that all three specifications lead to the same conclusion: a modest, non‐significant decline in well‐being with age and no evidence of a sex difference in that slope.
+
+\subsection{c)}
+
+Comparing the LMM and GEE results shows that all estimated effects are virtually identical: a modest negative slope for age, a small positive main effect of sex, and a near-zero age$\times$sex interaction; and in none of the models is the age$\times$sex interaction statistically significant.
+
+\section{Problem 2}
+
+```{r, warning=FALSE, echo=FALSE}
+df <- read_csv("C:/Users/ncwbr/Desktop/sixcity.csv")
+```
+
+GLMM assume that conditional independence given the random intercept; random effects $\sim N(0,\sigma^2)$.
+
+```{r, warning=FALSE, echo=FALSE}
+m.glmm <- glmer(resp ~ age + smok + aXs + (1 | id),
+                data = df, family = binomial)
+
+summary(m.glmm)
+```
+
+GEE assume that correct specification of the marginal mean.
+
+```{r, warning=FALSE, echo=FALSE}
+m.gee <- geeglm(resp ~ age + smok + aXs,
+                id       = id,
+                data     = df,
+                family   = binomial,
+                corstr   = "exchangeable")
+
+summary(m.gee)
+```
+
+Transition model assume that each outcome depends on the immediate past outcome.
+
+```{r, warning=FALSE, echo=FALSE}
+df2 <- df %>%
+  arrange(id, age) %>%
+  group_by(id) %>%
+  mutate(prev_resp = lag(resp, default=0)) %>%
+  ungroup()
+
+m.trans <- glmer(resp ~ prev_resp + age + smok + aXs + (1 | id),
+                 data = df2, family = binomial)
+
+summary(m.trans)
+```
+
+In summary, the three approaches give subtly different smoking coefficients because they rest on different conditioning and correlation assumptions: the GLMM estimates a subject‐specific effect of $\beta_{\mathrm{smok}} = 0.478$ by modeling a normal random intercept; the GEE yields a marginal effect of $\beta_{\mathrm{smok}} = 0.314$ using an exchangeable working correlation and robust “sandwich” variances; and the first‐order Markov transition model—by also conditioning on the immediately prior outcome plus a random intercept—produces $\beta_{\mathrm{smok}} = 0.413$. 
+
+The GLMM’s subject‐specific odds ratio of 
+$$
+\exp(\beta_{\mathrm{smok}})=\exp(0.478)\approx1.61
+$$
+tells you that, for a given individual holding their baseline risk constant, picking up smoking raises their odds of the outcome by $61\%$—a clear, personalized message to motivate cessation.  
+
+At the population level, the GEE’s marginal OR of 
+$$
+\exp(\beta_{\mathrm{smok}})=\exp(0.314)\approx1.37
+$$
+means that, on average across everyone, smokers have $37\%$ higher odds, so cutting smoking prevalence by, say, $10\%$ could yield roughly a $13\%$ drop in overall disease odds—insight critical for public‐health policy.  
+
+And if you’re building a longitudinal risk tool that updates at each visit, the first‐order Markov transition model’s OR of 
+$$
+\exp(\beta_{\mathrm{smok}})=\exp(0.413)\approx1.51
+$$
+indicates that, conditional on someone’s last outcome, smoking boosts their next visit’s odds by $51\%$, which helps you dynamically recalibrate risk as history unfolds.
+
+\section{Problem 3}
+
+\subsection{a)}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llrrr}
+\hline
+Treatment          & Visit               & Mean rate (seizures/week) &   SD &  N \\
+\hline
+\textbf{placebo}   & Baseline (8 wk)     &                       3.85 & 3.26 & 28 \\
+placebo            & Visit 1 (2 wk)      &                       4.68 & 5.07 & 28 \\
+placebo            & Visit 2 (2 wk)      &                       4.39 & 7.34 & 28 \\
+placebo            & Visit 4 (2 wk)      &                       3.98 & 3.81 & 28 \\
+\hline
+\textbf{progabide} & Baseline (8 wk)     &                       3.95 & 3.50 & 31 \\
+progabide          & Visit 1 (2 wk)      &                       4.29 & 9.12 & 31 \\
+progabide          & Visit 2 (2 wk)      &                       4.21 & 5.93 & 31 \\
+progabide          & Visit 3 (2 wk)      &                       4.06 & 6.95 & 31 \\
+progabide          & Visit 4 (2 wk)      &                       3.35 & 5.63 & 31 \\
+\hline
+\end{tabular}
+\caption{Seizure rates by treatment arm and visit}
+\label{tab:seizure_rates}
+\end{table}
+
+\newpage
+
+```{r, warning=FALSE, include=FALSE}
+df <- read_csv("C:/Users/ncwbr/Desktop/Seizure.csv")
+```
+
+```{r, echo=FALSE, include=FALSE}
+df_long <- df %>% 
+  pivot_longer(y0:y4, names_to="visit", values_to="seizures") %>% 
+  mutate(
+    weeks     = if_else(visit=="y0", 8, 2),
+    rate      = seizures / weeks,               
+    visit_lab = factor(visit,
+                       levels=c("y0","y1","y2","y3","y4"),
+                       labels=c("Baseline\n(8 wk)", "Visit 1\n(2 wk)", 
+                                "Visit 2\n(2 wk)", "Visit 3\n(2 wk)", "Visit 4\n(2 wk)"))
+  )
+
+summary_tbl <- df_long %>%
+  group_by(tx, visit_lab) %>%
+  summarize(
+    mean_rate  = mean(rate),
+    sd_rate    = sd(rate),
+    n          = n(),
+    .groups     = "drop"
+  )
+knitr::kable(summary_tbl,
+             col.names=c("Treatment","Visit","Mean rate\n(seizures/week)","SD","N"),
+             digits=2)
+```
+
+
+\subsection{b)}
+
+```{r, echo=FALSE}
+gee_mod <- geeglm(
+  seizures ~ tx + age,
+  offset = log(weeks),
+  id     = id,
+  data   = df_long,
+  family = poisson(link="log"),
+  corstr = "exchangeable"
+)
+
+summary(gee_mod)
+```
+
+Estimated treatment effect:
+$$
+\hat\beta_{\mathrm{txprogabide}} = 0.0292,\;
+\mathrm{SE}=0.2049,\;
+p=0.887,
+\quad
+\mathrm{IRR}=e^{0.0292}\approx1.03\;(\text{with} \ 95\%\;\mathrm{CI}\;0.69\text{–}1.54).
+$$
+
+Estimated age effect:
+$$
+\hat\beta_{\mathrm{age}} = -0.0332,\;
+\mathrm{SE}=0.0147,\;
+p=0.024,
+\quad
+\mathrm{IRR}=e^{-0.0332}\approx0.97\;(\text{with}\;95\%\;\mathrm{CI}\;0.94\text{–}0.996).
+$$
+
+Estimated working correlation:
+$$
+\hat\alpha = 0.764.
+$$
+Under this GEE, we observed that there is no significant treatment effect of progabide on seizure rates, but patient age does modestly reduce seizure incidence.
+
+\clearpage
+\appendix
+\section{Appendix: R Code}
+
+
+\begin{verbatim}
+
+library(lme4)
+library(geepack)
+library(readr)
+library(dplyr)
+library(tidyverse)
+
+#Problem 1 a)
+df <- read_csv("C:/Users/ncwbr/Desktop/uk_sub.csv")
+df$sex <- relevel(factor(df$sex_dv), ref="Male")
+
+m.lmm <- lmer(scghq1_dv ~ age_dv * sex + (1 | pidp), data = df)
+summary(m.lmm)
+
+m.noInt <- update(m.lmm, . ~ . - age_dv:sex)
+anova(m.noInt, m.lmm)
+
+#Problem 1 b)
+
+gee.ind <- geeglm(scghq1_dv ~ age_dv * sex,
+                  id = pidp, corstr = "independence",
+                  data = df, family = gaussian)
+
+gee.exc <- update(gee.ind, corstr = "exchangeable")
+
+gee.ar1 <- update(gee.ind, corstr = "ar1")
+
+summary(gee.ind)
+summary(gee.exc)
+summary(gee.ar1)
+
+#Problem 2
+
+df <- read_csv("C:/Users/ncwbr/Desktop/sixcity.csv")
+m.glmm <- glmer(resp ~ age + smok + aXs + (1 | id),
+                data = df, family = binomial)
+
+summary(m.glmm)
+m.gee <- geeglm(resp ~ age + smok + aXs,
+                id       = id,
+                data     = df,
+                family   = binomial,
+                corstr   = "exchangeable")
+
+summary(m.gee)
+df2 <- df %>%
+  arrange(id, age) %>%
+  group_by(id) %>%
+  mutate(prev_resp = lag(resp, default=0)) %>%
+  ungroup()
+
+m.trans <- glmer(resp ~ prev_resp + age + smok + aXs + (1 | id),
+                 data = df2, family = binomial)
+
+summary(m.trans)
+
+#Problem 3 a)
+
+df <- read_csv("C:/Users/ncwbr/Desktop/Seizure.csv")
+df_long <- df %>% 
+  pivot_longer(y0:y4, names_to="visit", values_to="seizures") %>% 
+  mutate(
+    weeks     = if_else(visit=="y0", 8, 2),
+    rate      = seizures / weeks,               
+    visit_lab = factor(visit,
+                       levels=c("y0","y1","y2","y3","y4"),
+                       labels=c("Baseline\n(8 wk)", "Visit 1\n(2 wk)", 
+                                "Visit 2\n(2 wk)", "Visit 3\n(2 wk)", "Visit 4\n(2 wk)"))
+  )
+
+summary_tbl <- df_long %>%
+  group_by(tx, visit_lab) %>%
+  summarize(
+    mean_rate  = mean(rate),
+    sd_rate    = sd(rate),
+    n          = n(),
+    .groups     = "drop"
+  )
+knitr::kable(summary_tbl,
+             col.names=c("Treatment","Visit","Mean rate\n(seizures/week)","SD","N"),
+             digits=2)
+             gee_mod <- geeglm(
+  seizures ~ tx + age,
+  offset = log(weeks),
+  id     = id,
+  data   = df_long,
+  family = poisson(link="log"),
+  corstr = "exchangeable"
+)
+
+summary(gee_mod)
+
+\end{verbatim}

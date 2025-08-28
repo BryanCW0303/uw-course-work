@@ -1,0 +1,634 @@
+---
+title: "BIOST540HW2"
+author: "Bryan Ng, 2427348"
+date: "2025-05-09"
+output: pdf_document
+---
+
+```{r, include=FALSE}
+library(tidyverse)
+library(nlme)
+library(broom.mixed)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(splines)
+library(knitr)
+```
+
+
+\section{Problem 1}
+
+\subsection{a)}
+
+```{r, echo=FALSE}
+df <- read_csv("C:/Users/ncwbr/Desktop/Topeka.csv")
+df <- df %>%
+  mutate(time = age - age0)
+
+baseline <- df %>%
+  filter(abs(time) < 1e-6)
+
+ggplot(baseline, aes(x = age0)) +
+  geom_histogram(binwidth = 0.5, color = "black", fill = "lightblue") +
+  labs(
+    x = "Age at Entry",
+    y = "Number of Children",
+    title = "Histogram of Age at Entry"
+  )
+
+ggplot(baseline, aes(x = age0, y = logFEV1)) +
+  geom_point(alpha = 0.7) +
+  labs(
+    x = "Age at Entry",
+    y = "log(FEV1) at Entry",
+    title = "log(FEV1) at Entry vs Age at Entry"
+  )
+
+ggplot(df, aes(x = age, y = logFEV1)) +
+  geom_point(alpha = 0.4) +
+  labs(
+    x = "Age",
+    y = "log(FEV1)",
+    title = "log(FEV1) vs Age"
+  )
+
+ggplot(df, aes(x = time, y = logFEV1)) +
+  geom_point(alpha = 0.4) +
+  labs(
+    x = "Time from Entry",
+    y = "log(FEV1)",
+    title = "log(FEV1) vs Time from Entry"
+  )
+```
+
+\subsection{b)}
+
+The histogram shows most girls entered the study between ages 6 and 9, with only a few older entrants. At baseline, there’s a clear positive correlation between age and $\log(\text{FEV1})$: six to seven year olds already have higher volumes of air on their first visit. When we incorporate all follow‐ups, $\log(\text{FEV1})$ continues to rise steadily with both chronological age and time since enrollment, reflecting normal growth and lung‐maturation over the school years. We also see increasing spread in $\log(\text{FEV1})$ at older ages and later follow‐ups, suggesting individual differences in the timing or rate of lung growth become more pronounced over adolescence.
+
+
+\subsection{c)}
+
+```{r, warning=FALSE, include=FALSE}
+df$age_dummy <- cut(df$age,
+                   breaks = c(-Inf, 8, 10, 12, 14, Inf),
+                   labels = c("<8","8–10","10–12","12–14","14+"))
+
+model1 <- lme(
+  fixed = logFEV1 ~ age_dummy,
+  random = ~ 1 | id,
+  data = df
+)
+
+model2 <- lme(
+  fixed = logFEV1 ~ age,
+  random = ~ 1 | id,
+  data = df
+)
+
+model3 <- lme(
+  fixed = logFEV1 ~ age + I(age^2),
+  random = ~ 1 | id,
+  data = df
+)
+
+df <- df %>%
+  mutate(
+    a1 = pmax(age - 10, 0),
+    a2 = pmax(age - 14, 0)
+  )
+
+model4 <- lme(
+  fixed = logFEV1 ~ age + a1 + a2,
+  random = ~ 1 | id,
+  data = df
+)
+
+model5 <- lme(
+  fixed = logFEV1 ~ bs(age, knots = c(10, 14), degree = 3),
+  random = ~ 1 | id,
+  data = df
+)
+```
+
+```{r, warning=FALSE, echo=FALSE}
+age_grid <- seq(min(df$age), max(df$age), length.out = 200)
+new_df <- tibble(age = age_grid) %>%
+  
+  mutate(
+    age_dummy = cut(age,
+                    breaks = c(-Inf, 8, 10, 12, 14, Inf),
+                    labels = c("<8","8–10","10–12","12–14","14+")),
+    a1 = pmax(age - 10, 0),
+    a2 = pmax(age - 14, 0)
+  )
+
+new_df <- new_df %>%
+  mutate(
+    step = predict(model1, new_df, level = 0),
+    linear = predict(model2, new_df, level = 0),
+    quadratic = predict(model3, new_df, level = 0),
+    lspline = predict(model4, new_df, level = 0),
+    cspline = predict(model5, new_df, level = 0)
+  )
+
+plotdat <- new_df %>%
+  pivot_longer(
+    cols = step:cspline,
+    names_to = "model",
+    values_to = "pred_logFEV1"
+  )
+
+ggplot() +
+  geom_point(
+    data = df,
+    aes(x = age, y = logFEV1),
+    colour = "grey70",
+    alpha  = 0.3,
+    size   = 0.8
+  ) +
+  
+  geom_line(
+    data = plotdat,
+    aes(x = age, y = pred_logFEV1, colour = model),
+    size = 1
+  ) +
+  labs(
+    x = "Age",
+    y = "log(FEV1)",
+    colour = "Fitted Models",
+    title = "Fitted Curves"
+  ) +
+  theme_minimal()
+```
+
+\subsection{d)}
+
+```{r, warning=FALSE, echo=FALSE}
+pred_ages <- tibble(age = c(9, 11, 13, 15)) %>%
+  
+  mutate(
+    age_dummy = cut(age,
+                    breaks = c(-Inf, 8, 10, 12, 14, Inf),
+                    labels = c("<8","8–10","10–12","12–14","14+")),
+    a1 = pmax(age - 10, 0),
+    a2 = pmax(age - 14, 0)
+  )
+
+pred_table <- pred_ages %>%
+  mutate(
+    step  = predict(model1, ., level = 0),
+    linear = predict(model2, ., level = 0),
+    quadratic = predict(model3, ., level = 0),
+    lspline = predict(model4, ., level = 0),
+    cspline = predict(model5, ., level = 0)
+  ) %>%
+  
+  select(age, step:cspline)
+
+kable(
+  pred_table,
+  digits = 3,
+  col.names = c("Age", "Step", "Linear", "Quadratic", "L‐spline", "C‐spline"),
+  caption = "Predicted mean log(FEV1) at selected ages"
+)
+```
+
+\subsection{e)}
+
+Every model shows a clear positive relationship—older girls have higher lung function on average. Between roughly six and ten years, the slope is steeper, reflecting rapid lung growth during the early school years whereas after about thirteen to fourteen years, the curves begin to plateau, indicating that the rate of increase in the volume of air slows as girls approach teenage years. 
+
+Models allowing non-linear: step-function, quadratic, linear spline, cubic spline.
+
+Models allowing non-constant rates of change: quadratic, linear spline, cubic spline.
+
+\subsection{f) i)}
+
+$$
+E\bigl[\log FEV1_{ij}\mid age_{ij}, group_i\bigr]
+= \beta_0
++ \beta_1\,group_i
++ \beta_2\,age_{ij}
++ \beta_3\,(age_{ij}-14)_+
+$$
+We can rewrite it as the function of $\text{age}_{ij}$ and $\text{group}_i$.
+$$
+f(\text{age}_{ij}, \text{group}_i) = \beta_0
++ \beta_1\,group_i
++ \beta_2\,age_{ij}
++ \beta_3\,(age_{ij}-14)_+ 
+$$
+For the unexposed group:
+
+Slope for $age<14$: $\partial f(\text{age}_{ij} < 14, \text{group}_i = 0) / \partial \text{age}_{ij} = \beta_2$  
+Slope for $age\ge14$: $\partial f(\text{age}_{ij} \ge 14, \text{group}_i = 0) / \partial \text{age}_{ij} = \beta_2 + \beta_3$  
+
+For the exposed group:
+
+Slope for $age<14$: $\partial f(\text{age}_{ij} < 14, \text{group}_i = 1) / \partial \text{age}_{ij} = \beta_2$  
+Slope for $age\ge14$: $\partial f(\text{age}_{ij} \ge 14, \text{group}_i = 1) / \partial \text{age}_{ij} = \beta_2 + \beta_3$   
+
+
+\subsection{f) ii)}
+For model:
+$$
+E\bigl[\log FEV1_{ij}\mid age_{ij}, group_i\bigr]
+= \beta_0
++ \beta_1\,group_i
++ \beta_2\,age_{ij}
++ \beta_3\,(age_{ij}\times group_i)
++ \beta_4\,(age_{ij}-14)_+
+$$
+Similarly, we can derive
+
+For the unexposed group:
+Slope for $age<14$: $\beta_2$  
+Slope for $age\ge14$: $\beta_2+\beta_4$  
+
+For the exposed group:
+Slope for $age<14$: $\beta_2+\beta_3$  
+Slope for $age\ge14$: $(\beta_2+\beta_3)+\beta_4$  
+
+
+\subsection{f) iii)}
+For model:
+$$
+E\bigl[\log FEV1_{ij}\mid age_{ij}, group_i\bigr]
+= \beta_0
++ \beta_1\,group_i
++ \beta_2\,age_{ij}
++ \beta_3\,(age_{ij}\times group_i)
++ \beta_4\,(age_{ij}-14)_+
++ \beta_5\,(age_{ij}-14)_+\,\times\,group_i
+$$
+Similarly, we can derive
+
+For the unexposed group:
+Slope for $age<14$: $\beta_2$  
+Slope for $age\ge14$: $\beta_2+\beta_4$  
+
+For the exposed group:
+Slope for $age<14$: $\beta_2+\beta_3$  
+Slope for $age\ge14$: $(\beta_2+\beta_3)+(\beta_4+\beta_5)$
+
+\subsection{g)}
+
+Model i: the group difference is constant over time.
+
+Model ii: the group difference changes linearly with age.
+
+Model iii: the group difference is non-linear.
+
+
+\section{Problem 2}
+
+\subsection{a)}
+
+```{r, warning=FALSE, echo=FALSE}
+df = read_csv("C:/Users/ncwbr/Desktop/uk_sub.csv")
+ggplot(df, aes(x = age_dv, 
+               y = scghq1_dv, 
+               group = pidp)) +
+  geom_line(alpha = 0.3) +
+  labs(
+    x = "age",
+    y = "scghq1_dv",
+    title = "Spaghetti Plot of Well-being by Age"
+  ) +
+  theme_minimal()
+```
+
+\subsection{b)}
+
+```{r, warning=FALSE, echo=FALSE}
+m0 <- lme(
+  fixed = scghq1_dv ~ age_dv + factor(sex_dv),
+  random = ~ 1 | pidp,
+  data = df,
+  na.action = na.exclude
+)
+
+vg <- Variogram(
+  object  = m0,
+  form = ~ wave | pidp,
+  resType = "pearson",
+  na.rm = TRUE
+)
+
+vg_avg <- as_tibble(vg) %>%
+  rename(lag = dist) %>%
+  group_by(lag) %>%
+  summarize(semivar = mean(variog, na.rm = TRUE)) %>%
+  ungroup()
+
+ggplot(vg_avg, aes(x = lag, y = semivar)) +
+  geom_point(size = 2) +
+  geom_line() +
+  labs(
+    x = "Lag in Waves",
+    y = "Semivariance of Residuals",
+    title = "Variogram of Well‐being Residuals accounting for sex and age"
+  ) +
+  theme_minimal()
+```
+
+```{r, warning=FALSE, echo=FALSE}
+fixed_form <- scghq1_dv ~ age_dv + factor(sex_dv)
+
+model1 <- lm(fixed_form, data = df, na.action = na.exclude)
+
+model2 <- lme(fixed = fixed_form,
+              random  = ~ 1 | pidp,
+              data = df,
+              na.action = na.exclude)
+
+model3 <- lme(fixed = fixed_form,
+              random = ~ 1 | pidp,
+              correlation = corAR1(form = ~ wave | pidp),
+              data = df,
+              na.action = na.exclude)
+```
+
+
+\subsection{c) i}
+
+Linear model without accounting for any within-subject correlation.
+```{r, warning=FALSE, echo=FALSE}
+summary(model1)
+```
+
+\subsection{c) ii}
+
+Linear mixed model with a subject-specific random intercept.
+```{r, warning=FALSE, echo=FALSE}
+summary(model2)      
+```
+
+\subsection{c) iii}
+
+Linear mixed model with a subject-specific random intercept and serial correlation over data collection waves.
+```{r, warning=FALSE, echo=FALSE}
+summary(model3)
+```
+
+\subsection{d)}
+
+\begin{table}[ht]
+\centering
+\caption{Fixed‐effect estimates for age and sex under three covariance structures}
+\begin{tabular}{lccc}
+\toprule
+Term                  & OLS                 & RI         & RI + AR(1)          \\
+\midrule
+Intercept             & 14.054 (0.625), <.001 & 13.521 (1.121), <.001 & 13.423 (1.143), <.001 \\
+
+age\_dv               & –0.036 (0.011), .001 & –0.021 (0.019), .260 & –0.020 (0.019), .296 \\
+
+factor(sex\_dv)Male   & –1.461 (0.357), <.001 & –1.767 (0.720), .015 & –1.707 (0.714), .018 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+We found that the age_dv coefficient appears significant in the OLS model, but it loses significance, and all coefficients’ standard errors increase substantially in both the RI and RI + AR(1). This difference arises because OLS treats all 1,100 observations as independent, thereby underestimating uncertainty. By contrast, the mixed-effects models explicitly account for within-subject clustering and serial correlation, which increases the standard errors and yields more reliable inference.
+
+Since we observed an increasing trend in the variogram plotted in (b), we chose the RI + AR(1) model to test whether age or sex is associated with well-being, as it accounts for both serial correlation and within-subject clustering—thereby yielding more reliable inference for our question.
+
+Results from the RI + AR(1) model show that age is not significantly associated with well-being, but there is a statistically significant sex difference: males report lower well-being than females in this cohort.
+
+\clearpage
+\appendix
+\section{Appendix: R Code}
+
+
+\begin{verbatim}
+library(tidyverse)
+library(nlme)
+library(broom.mixed)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(splines)
+library(knitr)
+
+# Problem 1 a)
+df <- read_csv("C:/Users/ncwbr/Desktop/Topeka.csv")
+df <- df %>%
+  mutate(time = age - age0)
+
+baseline <- df %>%
+  filter(abs(time) < 1e-6)
+
+ggplot(baseline, aes(x = age0)) +
+  geom_histogram(binwidth = 0.5, color = "black", fill = "lightblue") +
+  labs(
+    x = "Age at Entry",
+    y = "Number of Children",
+    title = "Histogram of Age at Entry"
+  )
+
+ggplot(baseline, aes(x = age0, y = logFEV1)) +
+  geom_point(alpha = 0.7) +
+  labs(
+    x = "Age at Entry",
+    y = "log(FEV1) at Entry",
+    title = "log(FEV1) at Entry vs Age at Entry"
+  )
+
+ggplot(df, aes(x = age, y = logFEV1)) +
+  geom_point(alpha = 0.4) +
+  labs(
+    x = "Age",
+    y = "log(FEV1)",
+    title = "log(FEV1) vs Age"
+  )
+
+ggplot(df, aes(x = time, y = logFEV1)) +
+  geom_point(alpha = 0.4) +
+  labs(
+    x = "Time from Entry",
+    y = "log(FEV1)",
+    title = "log(FEV1) vs Time from Entry"
+  )
+  
+# Problem 1 c)
+df$age_dummy <- cut(df$age,
+                   breaks = c(-Inf, 8, 10, 12, 14, Inf),
+                   labels = c("<8","8–10","10–12","12–14","14+"))
+
+model1 <- lme(
+  fixed = logFEV1 ~ age_dummy,
+  random = ~ 1 | id,
+  data = df
+)
+
+model2 <- lme(
+  fixed = logFEV1 ~ age,
+  random = ~ 1 | id,
+  data = df
+)
+
+model3 <- lme(
+  fixed = logFEV1 ~ age + I(age^2),
+  random = ~ 1 | id,
+  data = df
+)
+
+df <- df %>%
+  mutate(
+    a1 = pmax(age - 10, 0),
+    a2 = pmax(age - 14, 0)
+  )
+
+model4 <- lme(
+  fixed = logFEV1 ~ age + a1 + a2,
+  random = ~ 1 | id,
+  data = df
+)
+
+model5 <- lme(
+  fixed = logFEV1 ~ bs(age, knots = c(10, 14), degree = 3),
+  random = ~ 1 | id,
+  data = df
+)
+
+age_grid <- seq(min(df$age), max(df$age), length.out = 200)
+new_df <- tibble(age = age_grid) %>%
+  
+  mutate(
+    age_dummy = cut(age,
+                    breaks = c(-Inf, 8, 10, 12, 14, Inf),
+                    labels = c("<8","8–10","10–12","12–14","14+")),
+    a1 = pmax(age - 10, 0),
+    a2 = pmax(age - 14, 0)
+  )
+
+new_df <- new_df %>%
+  mutate(
+    step = predict(model1, new_df, level = 0),
+    linear = predict(model2, new_df, level = 0),
+    quadratic = predict(model3, new_df, level = 0),
+    lspline = predict(model4, new_df, level = 0),
+    cspline = predict(model5, new_df, level = 0)
+  )
+
+plotdat <- new_df %>%
+  pivot_longer(
+    cols = step:cspline,
+    names_to = "model",
+    values_to = "pred_logFEV1"
+  )
+
+ggplot() +
+  geom_point(
+    data = df,
+    aes(x = age, y = logFEV1),
+    colour = "grey70",
+    alpha  = 0.3,
+    size   = 0.8
+  ) +
+  
+  geom_line(
+    data = plotdat,
+    aes(x = age, y = pred_logFEV1, colour = model),
+    size = 1
+  ) +
+  labs(
+    x = "Age",
+    y = "log(FEV1)",
+    colour = "Fitted Models",
+    title = "Fitted Curves"
+  ) +
+  theme_minimal()
+  
+# Problem 1 d)
+pred_ages <- tibble(age = c(9, 11, 13, 15)) %>%
+  
+  mutate(
+    age_dummy = cut(age,
+                    breaks = c(-Inf, 8, 10, 12, 14, Inf),
+                    labels = c("<8","8–10","10–12","12–14","14+")),
+    a1 = pmax(age - 10, 0),
+    a2 = pmax(age - 14, 0)
+  )
+
+pred_table <- pred_ages %>%
+  mutate(
+    step  = predict(model1, ., level = 0),
+    linear = predict(model2, ., level = 0),
+    quadratic = predict(model3, ., level = 0),
+    lspline = predict(model4, ., level = 0),
+    cspline = predict(model5, ., level = 0)
+  ) %>%
+  
+  select(age, step:cspline)
+
+kable(
+  pred_table,
+  digits = 3,
+  col.names = c("Age", "Step", "Linear", "Quadratic", "L‐spline", "C‐spline"),
+  caption = "Predicted mean log(FEV1) at selected ages"
+)
+
+# Problem 2 a)
+df = read_csv("C:/Users/ncwbr/Desktop/uk_sub.csv")
+ggplot(df, aes(x = age_dv, 
+               y = scghq1_dv, 
+               group = pidp)) +
+  geom_line(alpha = 0.3) +
+  labs(
+    x = "age",
+    y = "scghq1_dv",
+    title = "Spaghetti Plot of Well-being by Age"
+  ) +
+  theme_minimal()
+  
+# Problem 2 b)
+m0 <- lme(
+  fixed = scghq1_dv ~ age_dv + factor(sex_dv),
+  random = ~ 1 | pidp,
+  data = df,
+  na.action = na.exclude
+)
+
+vg <- Variogram(
+  object  = m0,
+  form = ~ wave | pidp,
+  resType = "pearson",
+  na.rm = TRUE
+)
+
+vg_avg <- as_tibble(vg) %>%
+  rename(lag = dist) %>%
+  group_by(lag) %>%
+  summarize(semivar = mean(variog, na.rm = TRUE)) %>%
+  ungroup()
+
+ggplot(vg_avg, aes(x = lag, y = semivar)) +
+  geom_point(size = 2) +
+  geom_line() +
+  labs(
+    x = "Lag in Waves",
+    y = "Semivariance of Residuals",
+    title = "Variogram of Well‐being Residuals accounting for sex and age"
+  ) +
+  theme_minimal()
+  
+# Problem 2 c)
+fixed_form <- scghq1_dv ~ age_dv + factor(sex_dv)
+
+model1 <- lm(fixed_form, data = df, na.action = na.exclude)
+
+model2 <- lme(fixed = fixed_form,
+              random  = ~ 1 | pidp,
+              data = df,
+              na.action = na.exclude)
+
+model3 <- lme(fixed = fixed_form,
+              random = ~ 1 | pidp,
+              correlation = corAR1(form = ~ wave | pidp),
+              data = df,
+              na.action = na.exclude)
+summary(model1)
+summary(model2)
+summary(model3)
+\end{verbatim}
