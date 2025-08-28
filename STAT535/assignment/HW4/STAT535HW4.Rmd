@@ -1,0 +1,145 @@
+---
+title: "Question 2"
+output: pdf_document
+---
+
+\section{Part(a)}
+
+First, we preprocess data and set a random seed to ensure reproductivity. 
+
+```{r}
+set.seed(2427348)
+data = subset(iris, Species %in% c('versicolor', 'virginica'))
+variable = data[,1:4]
+n = nrow(variable)
+```
+
+And we define distance function, where distance is calculated by $d_{\Sigma}(X_1, X_2) = \sqrt{(X_1 - X_2)^T \Sigma^{-1} (X_1 - X_2)}$
+
+```{r}
+distance <- function(x, y, covmatrix){
+  diff <- as.numeric(x-y)
+  diff <- as.matrix(x-y)
+  distance <- sqrt(diff %*% solve(covmatrix) %*% t(diff))
+  return(distance)
+}
+```
+
+Then, we define k-nearest neighbor function knn(x_0, train_data, k), returning the classified label of point $x_0$.
+
+```{r}
+knn <- function(x_0, train_data, k, covmatrix){
+  distance <- NULL
+  for(i in 1:80){
+    distance[i] <- distance(subset(x_0, select = -Species), subset(train_data[i,], select = -Species),                                       covmatrix)
+  }
+  nearest_points <- order(distance)[1:k]
+  nearest_points_label <- train_data$Species[nearest_points]
+  predict_label <- sort(nearest_points_label, decreasing = TRUE)[1]
+  return(predict_label)
+}
+```
+
+We define loss function by 0-1 loss:
+$$
+L(c(x), y) = 
+\begin{cases} 
+0 & \text{if } c(x) = y \\ 
+1 & \text{if } c(x) \neq y
+\end{cases}
+$$
+
+```{r}
+zero_one_loss <- function(x,y){
+  error <- 0
+  for(i in 1:length(x)){
+    if(x[i] != y[i]){
+      error <- error + 1
+    }
+  }
+  return(error)
+}
+```
+
+To reduce time complexity, We perform 5-folds cross-validation with 5 iterations.
+
+```{r}
+n_iterations <- 5
+n_folds <- 5
+
+five_fold_cv <- function(data, k, covmatrix){
+  folds_errors <- numeric(n_folds)
+  cv_errors <- numeric(n_iterations)
+  for(i in 1:n_iterations){
+    cv_set <- sample(rep(1:n_folds, length = nrow(data)))
+    for(j in 1:n_folds){
+      test <- which(cv_set == n_folds)
+      test_set <- data[test,]
+      train_set <- data[-test,]
+      classified_label <- NULL
+      for(m in 1:nrow(test_set)){
+        classified_label <- rbind(classified_label, as.character(knn(test_set[m,], train_set, k, covmatrix)))
+      }
+      folds_errors[j] <- zero_one_loss(classified_label, test_set$Species)
+    }
+    cv_errors[i] <- mean(folds_errors)
+  }
+  return(mean(cv_errors))
+}
+```
+
+Finally, we plot cross-validation error versus the choice of k.
+
+```{r}
+sigma <- cov(variable)
+error_rate <- NULL;
+for(k in 3:10){
+  errors <- five_fold_cv(data, k, sigma)
+  error_rate <- c(error_rate, errors)
+}
+
+k_value <- c(3:10)
+plot(k_value, error_rate, type = "b", xlab = "k", ylab = "Cross-Validation Error Rate", 
+     main = "Cross-Validation Error vs. k")
+```
+
+We get the optimal k is 5, and the minimum cross-validation errors is 1.2. 
+
+```{r}
+optimal_k <- k_value[which.min(error_rate)]
+min_error_rate <- min(error_rate)
+optimal_k
+min_error_rate
+```
+
+\section{Part(b)}
+
+Given the provided information, we define the change in classification error when removing one particular variable $i$ as:
+
+$$
+\text{Error}^* = \lvert \text{Error} - \text{Error}_{-i} \rvert,
+$$
+where:
+
+- $\text{Error}$ is the classification error when all variables are included,
+- $\text{Error}_{-i}$ is the classification error when the variable $i$ is removed.
+
+$i = 1, 2, 3, 4$ corresponds to the variables:
+\begin{itemize}
+    \item $i = 1$: \textit{Sepal.Length}
+    \item $i = 2$: \textit{Sepal.Width}
+    \item $i = 3$: \textit{Petal.Length}
+    \item $i = 4$: \textit{Petal.Width}
+\end{itemize}
+
+```{r}
+variable_list <- c("Sepal.Length", "Sepal.Width", "Petal.Length", "Petal.Width")
+missing_variable_error <- numeric(length(variable_list))
+for(i in 1:4){
+  missing_variable_error[i] <- five_fold_cv(data[,-i], optimal_k, cov(variable[,-i]))
+}
+missing_variable_error <- abs(min_error_rate - missing_variable_error)
+data.frame(Variable = variable_list, Error = missing_variable_error)
+```
+
+It indicated that variable Sepal.Length has the lowest importance.

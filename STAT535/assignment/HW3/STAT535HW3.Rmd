@@ -1,0 +1,122 @@
+---
+output: pdf_document
+---
+
+\section{Question 3}
+
+\section{(a)}
+
+First, we input the data set and select the best smoothing bandwidth using  the
+silverman's rule, where
+$$h_{\text{ROT}} = 0.9 \times \min\left( \hat{\sigma}, \frac{\hat{IQR}}{1.34} \right) \times n^{-1/5}$$
+
+```{r}
+data <- faithful
+waiting <- faithful$waiting
+n <- length(waiting)
+sigma <- sd(waiting)
+IQR_value <- IQR(waiting)
+h_ROT <- 0.9 * min(sigma, IQR_value / 1.34) * n^(-1/5)
+```
+
+Then we estimate density by $\hat{p}_n(x)=\frac{1}{nh}\sum_{i=1}^n K(\frac{x_i-x}{h})$, where kernel function is $K(x)=(1-|x|) I(|x| \leq 1)$.
+
+```{r}
+kernel <- function(x){
+  return((1 - abs(x)) * (abs(x) <= 1))
+}
+KDE <- function(x, data, bandwidth){
+  density <- numeric(length(x))
+  for(i in 1:length(x)){
+    density[i] <- mean(kernel((x[i] - data) / bandwidth) / bandwidth)
+  }
+  return(density)
+}
+x <- seq(min(waiting), max(waiting), length = 2000)
+density_KDE <- KDE(x, waiting, h_ROT)
+```
+
+Finally, we plot the estimated density plot.
+
+```{r}
+plot(density_KDE)
+```
+
+\subsection{(b)(i)}
+
+Consider regression function:
+
+$$m(x_0) = \sum_{i=1}^n W_i(x_0) Y_i$$
+where
+$$W_i = \frac{K(\frac{x_0-X_i}{h})}{\sum_{i=1}^n K(\frac{x_0-X_i}{h})}$$
+
+```{r}
+data <- faithful
+X <- faithful$eruptions
+Y <- faithful$waiting
+kernel_regression <- function(X, Y, x_0, bandwidth){
+  weights <- kernel((x_0 - X) / bandwidth) / sum(kernel((x_0 - X) / bandwidth))
+  m <- sum(weights * Y)
+  return(m)
+}
+```
+
+Then we do 5-folds cross-validation for $h \in [0.1,0.5]$, and plot cross-validation error versus bandwidth.
+
+```{r}
+set.seed(2427348)
+n_folds <- 5
+h <- seq(0.1, 0.5, length = 100)
+h_cv_errors <- numeric(100)
+
+cv <- function(X,Y,bandwidth){
+  errors <- numeric(100)
+  folds_errors <- numeric(n_folds)
+  for(i in 1:100){
+    cv_set <- sample(rep(1:n_folds, length = length(X)))
+    for(j in 1:n_folds){
+      test <- cv_set[which(cv_set == j)]
+      X_test <- X[test]
+      X_train <- X[-test]
+      Y_test <- Y[test]
+      Y_train <- Y[-test]
+      Y_predict <- sapply(X_test, function(x) kernel_regression(X_train, Y_train, x,                                                                       bandwidth))
+      folds_errors[j] <- mean((Y_test - Y_predict)^2)
+    }
+    errors[i] = mean(folds_errors)
+  }
+  cv_errors <- mean(errors)
+  return(cv_errors)
+}
+
+for(j in 1:100){
+  h_cv_errors[j] <- cv(X,Y,h[j])
+}
+plot(h, h_cv_errors, type = "l",
+     xlab = "Bandwidth", ylab = "Cross-Validation Error",
+     main = "Cross-Validation Error vs. Bandwidth")
+
+```
+
+\subsection{(b)}
+
+We select bandwidth $h$ that minimizes risk function $R(h)$.
+
+```{r}
+optimal_h <- h[which.min(h_cv_errors)]
+optimal_h
+```
+
+\subsection{(c)}
+
+```{r}
+fitted_values <- sapply(X, function(x) {
+  kernel_regression(X, Y, x, optimal_h)
+})
+
+plot(X, Y, pch = 16, col = "gray", xlab = "Eruption Time",
+     ylab = "Waiting Time", main = "Kernel Regression with Triangle Kernel")
+
+lines(sort(X), fitted_values[order(X)], col = "red")
+```
+
