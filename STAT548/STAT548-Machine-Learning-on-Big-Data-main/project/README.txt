@@ -1,1 +1,0 @@
-In this project, we applied two nonparametric clustering methods to the data600.npy dataset, which contains n=10000 observations in d=600 dimensions. The first method is level‐set clustering using a kernel density estimator, and using nearest neighbor to assign low density points to clusters. The second method is spectral clustering.
