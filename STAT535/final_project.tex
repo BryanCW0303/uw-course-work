@@ -1,0 +1,296 @@
+\documentclass{article}
+
+% if you need to pass options to natbib, use, e.g.:
+%     \PassOptionsToPackage{numbers, compress}{natbib}
+% before loading neurips_2024
+
+
+% ready for submission
+\usepackage[final]{neurips_2024}
+
+
+% to compile a preprint version, e.g., for submission to arXiv, add add the
+% [preprint] option:
+%     \usepackage[preprint]{neurips_2024}
+
+
+% to compile a camera-ready version, add the [final] option, e.g.:
+%     \usepackage[final]{neurips_2024}
+
+
+% to avoid loading the natbib package, add option nonatbib:
+%    \usepackage[nonatbib]{neurips_2024}
+
+
+\usepackage[utf8]{inputenc} % allow utf-8 input
+\usepackage[T1]{fontenc}    % use 8-bit T1 fonts
+\usepackage{hyperref}       % hyperlinks
+\usepackage{url}            % simple URL typesetting
+\usepackage{booktabs}       % professional-quality tables
+\usepackage{amsfonts}       % blackboard math symbols
+\usepackage{nicefrac}       % compact symbols for 1/2, etc.
+\usepackage{microtype}      % microtypography
+\usepackage{xcolor}         % colors
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{subcaption}
+
+
+
+\title{Nonparametric Density Estimation on High Dimensional Data}
+
+
+% The \author macro works with any number of authors. There are two commands
+% used to separate the names and addresses of multiple authors: \And and \AND.
+%
+% Using \And between authors leaves it to LaTeX to determine where to break the
+% lines. Using \AND forces a line break at that point. So, if LaTeX puts 3 of 4
+% authors names on the first line, and the last on the second line, try using
+% \AND instead of \And before the third author name.
+
+\author{%
+Bryan Ng \\
+University of Washington\\
+Department of Statistics \\
+Seattle, WA 98105 USA \\
+\texttt{ngcw0303@uw.edu}\\
+}
+
+\begin{document}
+
+
+\maketitle
+
+
+\begin{abstract}
+  Main reference paper: Wasserman, L., Liu, H., \& Lafferty, J. (2007). Nonparametric density estimation in high dimensions using the rodeo. Annals of Statistics, 35(4), 1765–1796.
+  
+  In this report, when considering the challenge of estimating the joint density function of a $d$-dimensional random vector 
+  $X = (X_1, X_2, \ldots, X_d)$ in high-dimensional data space, we introduce a methodology called \emph{rodeo} (Regularization of the Derivative Expectation Operator) that simultaneously perform bandwidth selection and variable selection, and achieve faster rates of convergence compared to the kernel density estimator in high-dimensional setting.
+
+\end{abstract}
+
+\section{Background}
+
+When addressing the challenge of estimating an unknown density, the kernel density estimator (KDE) is a widely-used method because it does not necessarily assuming that the underlying density from a specific parametric family. While KDE performs adequately when the dimension $d$ is relatively low, it encounters significant limitations as $d$ increased. The primary issues stem from the excessive computational demands of cross-validation for bandwidth selection in each dimension and the slow convergence rates of the estimators in high dimensions.
+
+
+\subsection{Curse of Dimensionality}
+Let $X_1, X_2, \ldots, X_n \in \mathbb{R}^d$ be a sample from a distribution $F$
+with density $f$, and $x$ be a $d$-dimensional target point at which we want to estimate $f(x)$. The general multivariate kernel density estimator [1] is:
+
+$$
+\hat{f}_\mathbf{H}(x) = \frac{1}{n \det(\mathbf{H})} \sum_{i=1}^n \mathcal{K}\left(\mathbf{H}^{-1}(x - X_i)\right)
+$$
+
+where $\mathcal{K}$ is a symmetric kernel with $\int \mathcal{K}(u) du = 1$ and $\int u \mathcal{K}(u) du = 0_d$, $\mathbf{H} \in \mathbb{R}^{d \times d}$ is a symmetric positive definite bandwidth matrix. $\mathcal{K}$ is a product kernel and $\mathbf{H} = \text{diag}(h_1, \ldots, h_d)$ is diagonal, so that we can express the estimator as:
+
+$$
+\hat{f}_\mathbf{H}(x) = \frac{1}{n \det(\mathbf{H})} \sum_{i=1}^n \mathcal{K}\left(\mathbf{H}^{-1}(x - X_i)\right)
+$$
+
+$$
+= \frac{1}{n} \sum_{i=1}^n \prod_{j=1}^d \frac{1}{h_j} \mathcal{K}\left(\frac{x_j - X_{ij}}{h_j}\right).
+$$
+
+The multivariate kernel density estimator has a slower convergence rate [2]:
+
+$$
+\text{MISE}(\hat{f_{\mathbf{H}}}) = O(h^4) + O\left(\frac{1}{nh^d}\right) \rightarrow \text{MISE}_{\text{opt}}(\hat{f_{\mathbf{H}}}) = O\left(n^{-\frac{4}{4+d}}\right)
+$$
+which highlights the "curse of dimensionality" when $d$ is large.
+
+\subsection{Computational Cost of Bandwidth Selection}
+
+The most extended criteria in bandwidth estimation is the asymptotical mean integrated square error (AMISE) [2]. In the one-dimensional case, optimizing this criteria with respect to the bandwidth is not problematic as it involves a global search over one variable which is computationally feasible.
+
+$$\text{AMISE(h)} = \frac{\mu_K^2}{4} \cdot h^4 \cdot \int \left| p''(x) \right|^2 dx + \frac{\sigma_K^2}{n h}$$ 
+The optimal smoothing bandwidth is often determined by minimizing this expression, leading to:
+$$h_{\text{opt}} = \left( \frac{1}{n} \cdot \frac{4}{\int \left| p''(x) \right|^2 dx} \cdot \frac{\sigma_K^2}{\mu_K^2} \right)^{1/5}
+$$
+
+In the d-dimensional case, however, the AMISE becomes more complex [3]:
+$$
+\text{AMISE}(\mathbf{H}) = \frac{1}{4} \mu_2(K)^2 \left( \text{vech}^\top \mathbf{H} \right) \mathbf{\Psi}_4 \left( \text{vech} \, \mathbf{H} \right) 
++ n^{-1} \lvert \mathbf{H} \rvert^{-1/2} R(K).
+$$
+
+$$
+\mathbf{H}_{\text{opt}} = \arg\min_\mathbf{H} \text{AMISE}(\mathbf{H})
+$$
+Solving the above optimization problem would be extremely difficult. However, we can derive $\mathbf{H}_{\text{opt}}$ through unbiased cross-validation as an alternative way. Namely, the optimal bandwidth matrix $\mathbf{H}_{\text{opt}}$ is obtained by minimizing the UCV criterion [3]:
+
+$$
+\text{UCV}(\mathbf{H}) = \left( \int \hat{f}_\mathbf{H}^2(x) \, dx - \frac{2}{n} \sum_{i=1}^n \hat{f}_{\mathbf{H},-i}(X_i) \right)
+$$
+
+$$
+\mathbf{H}_{\text{opt}} = \arg\min_\mathbf{H} \text{UCV}(\mathbf{H}) = \arg\min_\mathbf{H} \left( \int \hat{f}_\mathbf{H}^2(x) \, dx - \frac{2}{n} \sum_{i=1}^n \hat{f}_{\mathbf{H},-i}(X_i) \right)
+$$
+
+But it is also impractical due to high computational costs of efficiently computing the integrals and sums.
+
+Consequently, kernel density estimators are infrequently applied to multivariate data because of the challenges in determining suitable kernel bandwidths to avoid over-fitting as well as the relatively slow rate of convergence.
+
+\section{Rodeo Density Estimation}
+
+\subsection{Sparsity Assumption}
+
+To effectively navigate density estimation, it is essential to define a suitable sparsity condition. Our primary assumption is:
+$$
+f(x_1, \dots, x_d) = g(x_R) b(x_1, \dots, x_d)
+$$
+where $g$ is an unknown function, $x_R = (x_j : j \in R)$ is a subset of the variables, and $b$ is a baseline density that is either fully known or constrained by a finite number of parameters. If $R$ contains only a few coordinates, it follows that the nonparametric component $g$ depends on a limited number of variables. Consequently, the rodeo method can achieve a faster convergence rate of 
+
+$$
+O\left( n^{-\frac{4}{4+R}} \right)
+$$
+
+where $R \ll d$.
+
+
+\subsection{The Local Rodeo}
+
+Considering the kernel density estimator $\hat{f}_H(x)$, the density rodeo is based on the concept of searching for $H_{\text{opt}}$. We initiate with a bandwidth matrix $H = \text{diag}(h_0, \ldots, h_0)$, where $h_0$ is large. Then, we compute the derivatives $Z_j$ for $j = 1, \ldots, d$ of the kernel density estimate concerning each bandwidth $h_j$, reducing $h_j$ if $Z_j$ is significant. The test statistic is defined as:
+
+$$
+Z_j = \frac{\partial \hat{f}_{\mathbf{H}(x)}}{\partial h_j} = \frac{1}{n} \sum_{i=1}^{n} \frac{\partial}{\partial h_j} \prod_{k=1}^{d} \frac{1}{h_k} K\left( \frac{x_k - X_{ik}}{h_k} \right)
+$$
+
+Thus, $|Z_j|$ is large if altering $h_j$ significantly impacts the estimator. To conduct the test, we compare $Z_j$ with its variance:
+
+$$
+\sigma^2_j = \text{Var}(Z_j) = \text{Var}\left(\frac{1}{n} \sum_{i=1}^{n} Z_{ji}\right) = \frac{1}{n} \text{Var}(Z_{j1}).
+$$
+
+For estimation, we use $s^2_j = \frac{v^2_j}{n}$ where $v^2_j$ denotes the sample variance of the $Z_j$ values. For a general kernel, we have:
+
+$$
+Z_j = -\frac{1}{n} \sum_{i=1}^{n} \frac{1}{h_j^2} (x_j - X_{ij})^2 \tilde{K}\left( \frac{x_j - X_{ij}}{h_j} \right) \prod_{k=1}^{d} K\left( \frac{x_k - X_{ik}}{h_k} \right),
+$$
+
+where $\tilde{K}(x) = \frac{d}{dx} \log K(x)$. In the case where $K$ is the Gaussian kernel, this simplifies to:
+
+$$
+Z_j = C \cdot \frac{1}{n} \sum_{i=1}^{n} (x_j - X_{ij})^2 - h_j^2 \cdot K\left( \frac{x_k - X_{ik}}{h_k} \right).
+$$
+
+Here, the constant $C = \frac{1}{h_j^3} \prod_{k=1}^{d} \frac{1}{h_k}$ can be disregarded to prevent overflow in calculations as $h_k \to 0$ for large $d$. The test statistic $Z_j$ indicates dimensions where changes in the bandwidth $h_j$ significantly influence the density estimate, necessitating greater precision in the kernel, thus requiring smaller $h_j$. Consequently, the local rodeo effectively accomplishes bandwidth selection.
+
+
+\subsection{The Global Rodeo}
+
+The local rodeo can be adapted for global bandwidth selection, where each dimension utilizes a fixed bandwidth. This strategy averages test statistics across multiple evaluation points $(x_1, \ldots, x_k)$, sampled from the empirical distribution.
+
+Averaging $Z_j$ yields a statistic with an asymptotic mean for relevant variables of:
+
+$$
+\frac{1}{h_j} \sum_{k=1}^{k} f_{jj}(x_i)
+$$
+
+Due to potential sign changes in $f_{jj}(x)$, cancellations may result, leading to a small statistic. To mitigate this, the statistic is squared. Let $x_1, \ldots, x_m$ be the evaluation points, and $Z_j(x_i)$ denotes the derivative for the $i$-th evaluation point with respect to $h_j$:
+
+$$
+Z_j(x_i) = \frac{1}{n} \sum_{k=1}^{n} Z_{jk}(x_i), \quad i = 1, \ldots, m, \quad j = 1, \ldots, d
+$$
+
+Define $\gamma_{jk} = (Z_{j1}(x_k), Z_{j2}(x_k), \ldots, Z_{jm}(x_k))^T$. Assuming $\text{Var}(\gamma_{jk}) = \Sigma_j$, let $Z_j$ denote $ (Z_{j1}, Z_{j2}, \ldots, Z_{jm})^T$. By the multivariate central limit theorem, we find:
+
+$$
+\text{Var}(Z_j) = \frac{\Sigma_j}{n} \equiv C_j
+$$
+
+Thus, we define the test statistic as:
+
+$$
+T_j = \frac{1}{m} \sum_{k=1}^{m} Z^2_j(x_k), \quad j = 1, \ldots, d
+$$
+
+and the variance estimate:
+
+$$
+s_j = \sqrt{\text{Var}(T_j)} = \frac{1}{m} \sqrt{\text{Var}(Z^T_j Z_j)} = \frac{1}{m} \left(2 \text{tr}(C_j^2) + 4 \mu^T_j C_j \mu_j\right)
+$$
+
+where $\hat{\mu} = \frac{1}{m} \sum_{i=1}^{m} Z_j(x_i)$. For irrelevant dimensions $j \in R_c$, we have $E[Z_j(x_i)] = O(h_j)$, thus $E[T_j] \approx \text{Var}(Z_j(x_i))$. We estimate variance using $s^2_j$. The threshold is set as:
+
+$$
+\lambda_j = s^2_j + 2 s_j \sqrt{2 \log\left(\frac{n}{c_n}\right)}
+$$
+
+
+
+\subsection{The algorithm of LDER(Local Density Estimation Rodeo)}
+
+\begin{enumerate}
+    \item Select parameter $0 < \beta < 1$ and initial bandwidth $h_0 = \frac{c_0}{\log \log n}$ for some constant $c_0$. Also, let $c_n = O(\log n)$.
+    \item Initialize $h_j$, and activate all dimensions:
+    \begin{enumerate}
+        \item $h_j = h_0, \, j = 1, 2, \ldots, d.$
+        \item $\mathcal{A} = \{1, 2, \ldots, d\}.$
+    \end{enumerate}
+    \item While $\mathcal{A}$ is nonempty, do for each $j \in \mathcal{A}$:
+    \begin{enumerate}
+        \item Estimate the derivative and variance: $Z_j$ and $s_j^2$.
+        \item Compute the threshold $\lambda_j = s_j \sqrt{2 \log (nc_n)}.$
+        \item If $\lvert Z_j \rvert > \lambda_j$, then set $h_j \leftarrow \beta h_j$; otherwise remove $j$ from $\mathcal{A}$.
+    \end{enumerate}
+    \item Output bandwidths $\mathbf{H}^*$ and estimator $\hat{f}_{\mathbf{H}^*}(x)$ .
+\end{enumerate}
+
+\section{Example}
+
+We demonstrate example of density estimation of two-dimensional example by rodeo and kernel density estimation respectively [4]. The two dimensions are independently generated from $X_1$, $X_2$ with the sample size $n = 500$, where
+$$
+X_1 \sim \frac{2}{3}\text{Beta}(1, 2) + \frac{1}{3}\text{Beta}(10, 10)
+$$
+
+$$
+X_2 \sim \text{Uniform}(0, 1)
+$$
+
+\begin{figure}[h!]
+    \centering
+    % First image
+    \begin{subfigure}[b]{0.45\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{rodeo.png}
+        \caption{the rodeo estimation}
+        \label{fig:sub1}
+    \end{subfigure}
+    \hfill
+    % Second image
+    \begin{subfigure}[b]{0.45\textwidth}
+        \centering
+        \includegraphics[width=\textwidth]{KDE.png}
+        \caption{the KDE estimation}
+        \label{fig:sub2}
+    \end{subfigure}
+    \caption{Density estimation on two-dimensional dataset}
+    \label{fig:parallel_images}
+\end{figure}
+
+We observe that the results obtained using the rodeo estimation outperform those of kernel density estimation.
+
+\section{Conclusion}
+
+The rodeo methodology provides a robust strategy for tackling the challenges of nonparametric kernel density estimation in high-dimensional spaces. By effectively selecting bandwidths and identifying relevant variables, it considerably reduces the curse of dimensionality along with the computational costs associated with bandwidth optimization for each individual dimension.
+
+\section{References}
+
+{
+\small
+
+[1] Scott, D. W. (2015). Multivariate density estimation: Theory, practice, and visualization (2nd ed.). Wiley. https://doi.org/10.1002/9781118575574
+
+[2] Wasserman, L. (2006). All of nonparametric statistics. Springer. https://doi.org/10.1007/0-387-30623-4
+
+[3] Duong, T., \& Hazelton, M. L. (2005). Cross-validation bandwidth matrices for multivariate kernel density estimation. Scandinavian Journal of Statistics, 32(3), 485–506. https://doi.org/10.1111/j.1467-9469.2005.00445.x
+
+[4] Wasserman, L., Liu, H., \& Lafferty, J. (2007). Nonparametric density estimation in high dimensions using the rodeo. Annals of Statistics, 35(4), 1765–1796.
+
+
+
+}
+
+\end{document}
