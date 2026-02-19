@@ -1,0 +1,115 @@
+---
+title: "STAT536HW3"
+author: "Bryan Ng, 2427348"
+date: "2025-10-21"
+output: pdf_document
+---
+
+```{r, warning=FALSE}
+df <- read.table("policestops.txt", header = TRUE)
+names(df) <- c("stops","arrests","precinct","eth")
+```
+
+\section{(A)}
+
+```{r}
+df$precinct <- factor(df$precinct)
+df$eth <- factor(df$eth, levels = c(1,2,3),
+                 labels = c("black","hispanic","white"))
+
+
+m_full      <- glm(stops ~ precinct + eth,
+                   family = poisson(link = "log"),
+                   data = df)
+
+
+m_precinct  <- glm(stops ~ precinct,
+                   family = poisson(link = "log"),
+                   data = df)
+
+
+m_eth       <- glm(stops ~ eth,
+                   family = poisson(link = "log"),
+                   data = df)
+
+m_intercept <- glm(stops ~ 1,
+                   family = poisson(link = "log"),
+                   data = df)
+
+
+AIC(m_full, m_precinct, m_eth, m_intercept)
+BIC(m_full, m_precinct, m_eth, m_intercept)
+
+best_model <- m_full       
+
+avg_expo <- aggregate(arrests ~ precinct + eth, data = df, FUN = mean)
+A_black_p3 <- subset(avg_expo, precinct=="3" & eth=="black")$arrests
+A_white_p3 <- subset(avg_expo, precinct=="3" & eth=="white")$arrests
+
+
+newdat <- data.frame(
+  arrests = c(A_black_p3, A_white_p3),
+  precinct = factor(c(3,3), levels = levels(df$precinct)),
+  eth = factor(c("black","white"), levels = levels(df$eth))
+)
+
+pred <- predict(best_model, newdata = newdat, type = "response", se.fit = TRUE)
+pred$fit                    
+pred$se.fit                
+```
+
+Based on both AIC and BIC, the full model including both precinct and ethnicity fits the data best. This suggests that the number of police stops varies significantly across both precincts and ethnic groups.
+
+Under this model, in precinct 3, the expected number of stops is approximately 852 for Black individuals and 207 for White individuals, indicating that Black individuals are stopped about 4 times more often than White individuals in the same precinct. This demonstrates a substantial racial disparity in police stop frequencies.
+
+\section{(B)}
+
+```{r}
+m_full_B <- glm(stops ~ precinct + eth,
+                family = poisson(link = "log"),
+                offset = log(arrests), data = df)
+
+m_precinct_B <- glm(stops ~ precinct,
+                    family = poisson(link = "log"),
+                    offset = log(arrests), data = df)
+
+m_eth_B <- glm(stops ~ eth,
+               family = poisson(link = "log"),
+               offset = log(arrests), data = df)
+
+m_intercept_B <- glm(stops ~ 1,
+                     family = poisson(link = "log"),
+                     offset = log(arrests), data = df)
+
+AIC(m_full_B, m_precinct_B, m_eth_B, m_intercept_B)
+BIC(m_full_B, m_precinct_B, m_eth_B, m_intercept_B)
+
+m_full_B <- glm(stops ~ precinct + eth,
+                family = poisson(link = "log"),
+                offset = log(arrests), data = df)
+
+avg_expo <- aggregate(arrests ~ precinct + eth, data = df, FUN = mean)
+
+A_black_p1 <- subset(avg_expo, precinct == "1" & eth == "black")$arrests
+A_white_p1 <- subset(avg_expo, precinct == "1" & eth == "white")$arrests
+A_black_p3 <- subset(avg_expo, precinct == "3" & eth == "black")$arrests
+A_white_p3 <- subset(avg_expo, precinct == "3" & eth == "white")$arrests
+
+newdat <- data.frame(
+  arrests  = c(A_black_p1, A_white_p1, A_black_p3, A_white_p3),
+  precinct = factor(c(1, 1, 3, 3), levels = levels(df$precinct)),
+  eth      = factor(c("black", "white", "black", "white"), levels = levels(df$eth))
+)
+
+pred_B <- predict(m_full_B, newdata = newdat, type = "response", se.fit = TRUE)
+pred_B$fit
+```
+
+Based on the Poisson regression results using arrests as the baseline offset log arrests, both AIC 5287.75 and BIC 5550.79 indicate that the full model including both precinct and ethnicity fits the data best. 
+The result shows that after including the number of arrests, both factors significantly affect the rate of police stops. The expected numbers of stops are approximately 247 for Black individuals and 63 for White individuals in precinct 1, and 965 for Black individuals and 359 for White individuals in precinct 3. Black individuals are consistently stopped more often than White individuals across precincts, even when arrest volume is taken into account, making the baseline model the most appropriate choice.
+
+\section{(C)}
+
+The statistically significant coefficients for Black ethnicity show that, after controlling for precinct and arrest volume, the expected number of stops for Black individuals is substantially higher than for White individuals. This means that, holding arrest counts and precinct effects constant, Black individuals are stopped at a higher rate.
+
+Therefore, the result provides strong evidence of racial discrimination in police stop rates. Even after accounting for precinct-level differences and the number of arrests, Black individuals are stopped significantly more often than White individuals, suggesting the presence of racial discrimination in police practices.

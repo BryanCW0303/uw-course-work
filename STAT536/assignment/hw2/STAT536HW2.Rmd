@@ -1,0 +1,138 @@
+---
+title: "STAT536HW2"
+author: "Bryan Ng, 2427348"
+date: "2025-10-11"
+output: pdf_document
+---
+
+```{r, message=FALSE, warning=FALSE}
+set.seed(2427348)
+library(tidyverse)
+library(nnet)     
+library(MASS)     
+library(ordinal)
+library(broom)
+library(janitor)
+```
+
+\section{Problem 1}
+
+\subsection{Data Preprocessing}
+
+```{r, message=FALSE, warning=FALSE}
+mental <- read_table("mentalimpairment-data.txt", col_names = TRUE) %>%
+  mutate(
+    impairment = factor(Impairment, levels = c("Well", "Mild", "Moderate", "Impaired")),
+    impairment_ord = factor(Impairment, ordered = TRUE, levels = c("Well", "Mild", "Moderate", "Impaired")),
+    ses = factor(SES, levels = c(0, 1), labels = c("low", "high")),
+    life = Events
+  )
+
+str(mental)
+```
+
+\subsection{Part A}
+
+```{r}
+fitA_full <- multinom(impairment ~ ses + life, data = mental, trace = FALSE)
+fitA_ses <- multinom(impairment ~ life, data = mental, trace = FALSE)
+fitA_life <- multinom(impairment ~ ses, data = mental, trace = FALSE)
+
+A_LRT_ses <- anova(fitA_ses, fitA_full, test = "Chisq")
+A_LRT_life <- anova(fitA_life, fitA_full, test = "Chisq")
+A_LRT_ses; A_LRT_life
+
+fitA_best <- fitA_full
+if (A_LRT_ses$`Pr(Chi)`[2] > 0.05) fitA_best <- fitA_ses
+if (A_LRT_life$`Pr(Chi)`[2] > 0.05 && A_LRT_ses$`Pr(Chi)`[2] <= 0.05) fitA_best <- fitA_life
+
+summary(fitA_best)
+
+johnA <- tibble(ses = factor("low", levels = levels(mental$ses)), life = 7)
+predA <- predict(fitA_best, newdata = johnA, type = "probs")
+round(predA, 4)
+```
+
+The likelihood ratio tests indicate that life events significantly influence mental impairment levels, while economic status does not. Therefore, the final model includes only the number of life events as a predictor. The results suggest that individuals experiencing more important life events are more likely to suffer from higher levels of mental impairment. John’s most probable mental impairment level is Impaired, indicating that frequent stressful life events substantially increase the likelihood of mental health problems.
+
+\subsection{Part B}
+
+```{r}
+fitB_full <- clm(impairment_ord ~ ses + life, data = mental, link = "logit")
+fitB_ses <- clm(impairment_ord ~ life, data = mental, link = "logit")
+fitB_life <- clm(impairment_ord ~ ses, data = mental, link = "logit")
+
+B_LRT_ses <- anova(fitB_ses,  fitB_full)
+B_LRT_life <- anova(fitB_life, fitB_full)
+
+get_p <- function(tab) {
+  nm <- names(tab)
+  pcol <- nm[grepl("^Pr", nm)]      
+  if (length(pcol) == 0) return(NA_real_)
+  as.numeric(tab[[pcol]][nrow(tab)])
+}
+
+p_ses <- get_p(B_LRT_ses)
+p_life <- get_p(B_LRT_life)
+
+fitB_best <- fitB_full
+if (!is.na(p_ses) && p_ses  > 0.05) fitB_best <- fitB_ses
+if (!is.na(p_life) && p_life > 0.05 && !( !is.na(p_ses) && p_ses > 0.05 )) fitB_best <- fitB_life
+
+summary(fitB_best)
+
+johnB <- tibble(ses = factor("low", levels = levels(mental$ses)), life = 7)
+predB <- predict(fitB_best, newdata = johnB, type = "prob")
+probB <- predB$fit %>% as_tibble()
+round(probB, 4)
+```
+
+The ordinal logistic regression model indicates that life events have a statistically significant positive effect on mental impairment, while socioeconomic status is not significant. Thus, the final model includes only life events as a predictor.
+This positive coefficient means that as the number of life events increases, the probability of being in a higher impairment category also increases. John’s most likely category is Impaired, indicating that frequent life events are strongly associated with greater mental impairment severity.
+
+\section{Problem 2}
+
+\subsection{Data Preprocessing}
+
+```{r, message=FALSE, warning=FALSE}
+allig_raw <- read_table("alligatorfood-data.txt", col_names = TRUE)
+
+
+allig <- allig_raw %>%
+pivot_longer(cols = Fish:Other, names_to = "Food", values_to = "Count") %>%
+mutate(
+lake = factor(Lake),
+gender = factor(Gender),
+size = factor(Size, levels = c(0, 1), labels = c("<=2.3", ">2.3")),
+Food = factor(Food)
+)
+
+str(allig)
+```
+
+```{r}
+fit_full <- multinom(Food ~ lake + gender + size, weights = Count, data = allig, trace = FALSE)
+summary(fit_full)
+exp(coef(fit_full))
+
+fit_lg <- multinom(Food ~ lake + gender, weights = Count, data = allig, trace = FALSE)
+anova(fit_lg, fit_full, test = "Chisq")
+```
+
+```{r}
+
+newdat <- tibble(
+  lake = factor("Trafford", levels = levels(allig$lake)),
+  gender = factor("Male", levels = levels(allig$gender)),
+  size = factor(">2.3", levels = levels(allig$size))
+)
+
+prob_pred <- predict(fit_full, newdata = newdat, type = "probs")
+
+round(prob_pred, 4)
+
+prob_reptile <- unname(prob_pred["Reptile"])
+prob_reptile
+```
+
+The multinomial logistic regression model reveals that both lake and size are significant predictors of alligators’ primary food choice. Alligators from Lake Trafford show a strong preference for reptiles, while larger alligators are less likely to consume fish or invertebrates. Gender does not appear to have a meaningful effect. According to the model, a male alligator from Lake Trafford that is three meters long has an estimated probability of about 19.9% of preferring reptiles for dinner.

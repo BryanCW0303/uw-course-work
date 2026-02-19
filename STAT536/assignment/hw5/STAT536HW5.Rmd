@@ -1,0 +1,165 @@
+---
+title: "STAT536HW5"
+author: "Bryan Ng, 2427348"
+date: "2025-11-16"
+output: pdf_document
+---
+
+\section{Problem 1}
+
+\subsection{1.}
+
+```{r, include=FALSE}
+data <- matrix(c(2037, 958,
+                 1757, 218),
+               nrow = 2, byrow = TRUE)
+
+dimnames(data) <- list(
+  Disease = c("No", "Yes"),
+  SNP2    = c("BB", "Bb_bb")
+)
+
+data <- as.data.frame(as.table(data))
+names(data) <- c("X1", "X2", "Freq")
+
+data
+```
+
+```{r}
+fit_ind <- glm(Freq ~ X1 + X2, family = poisson, data = data)
+
+print(summary(fit_ind))
+
+G2  <- deviance(fit_ind)
+df  <- fit_ind$df.residual
+pvl <- 1 - pchisq(G2, df)
+
+cat("G^2 =", G2, "   df =", df, "   p-value =", pvl, "\n")
+
+fit_sat <- glm(Freq ~ X1 * X2, family = poisson, data = data)
+
+print(anova(fit_ind, fit_sat, test = "Chisq"))
+```
+
+The log–linear model without an interaction term fits the data very poorly.
+The deviance of the independence model is $G^2 = 312.48$, giving a p-value essentially equal to zero.
+Therefore, the hypothesis that disease status and SNP2 genotype are independent is rejected.
+This indicates a strong association between Crohn’s disease and the SNP2 genotype.
+
+\subsection{2.}
+
+```{r}
+cases <- c(
+  data$Freq[data$X1=="Yes" & data$X2=="BB"],
+  data$Freq[data$X1=="Yes" & data$X2=="Bb_bb"]
+)
+controls <- c(
+  data$Freq[data$X1=="No"  & data$X2=="BB"],
+  data$Freq[data$X1=="No"  & data$X2=="Bb_bb"]
+)
+
+X2 <- factor(c("BB", "Bb_bb"))
+
+logit_fit <- glm(cbind(cases, controls) ~ X2, family = binomial)
+
+print(summary(logit_fit))
+
+print(exp(coef(logit_fit)))
+
+print(exp(confint(logit_fit)))
+```
+
+The logistic model shows that the SNP2 genotype has a very large effect on disease odds.
+The estimated odds ratio for “Bb or bb” vs. “BB” is $OR \approx 0.26$, with a 95% CI entirely below 1.
+This means that individuals carrying the minor allele b have disease odds that are only about one-quarter of those with genotype BB.
+Thus, the minor allele appears to have a protective effect against Crohn’s disease.
+
+\subsection{3.}
+
+```{r}
+mat <- matrix(
+  data$Freq,
+  nrow = 2, byrow = FALSE,
+  dimnames = list(
+    X1 = c("No", "Yes"),
+    X2 = c("BB", "Bb_bb")
+  )
+)
+
+print(fisher.test(mat))
+
+print(fisher.test(mat, alternative = "less"))
+
+print(fisher.test(mat, alternative = "greater"))
+```
+
+The two-sided Fisher test gives a p-value < $2×10^{-16}$, confirming a highly significant association.
+The one-sided test for OR < 1 also yields an extremely small p-value, supporting the conclusion that the minor allele reduces disease risk.
+Conversely, the one-sided test for OR > 1 gives p = 1, providing no evidence that the minor allele increases risk.
+Overall, Fisher’s tests strongly support that the minor allele b is protective rather than harmful.
+
+\subsection{Problem 2}
+
+\subsection{1. }
+
+```{r}
+data <- matrix(c(2037, 631, 327,
+                 1757,  18, 200),
+               nrow = 2, byrow = TRUE)
+
+dimnames(data) <- list(
+  Disease = c("No", "Yes"),
+  SNP2    = c("BB", "Bb", "bb")
+)
+
+data_df <- as.data.frame(as.table(data))
+names(data_df) <- c("X1", "X2", "Freq")
+data_df
+```
+
+```{r}
+fit_ind <- glm(Freq ~ X1 + X2, family = poisson, data = data_df)
+fit_sat <- glm(Freq ~ X1 * X2, family = poisson, data = data_df)
+
+summary(fit_ind)
+anova(fit_ind, fit_sat, test = "Chisq")
+```
+
+The log-linear independence model fits the data very poorly. The likelihood-ratio chi-square statistic is about 575.9, and the corresponding asymptotic p-value is effectively zero. This means that the hypothesis of independence between Crohn’s disease status and the SNP2 genotype is rejected. There is very strong evidence of an association between the two variables.
+
+\subsection{2. }
+
+```{r}
+fisher_test <- fisher.test(data)
+fisher_test
+fisher_test$p.value
+```
+
+The generalized Fisher’s exact test for the 2 by 3 table gives an exact p-value of approximately 1.9 times 10 to the power minus 125, which is essentially zero. This confirms the same conclusion as the asymptotic test: there is overwhelming evidence that disease status and SNP2 genotype are not independent.
+
+\subsection{3. }
+
+```{r}
+cases <- c(
+  data["Yes", "BB"],
+  data["Yes", "Bb"],
+  data["Yes", "bb"]
+)
+
+controls <- c(
+  data["No", "BB"],
+  data["No", "Bb"],
+  data["No", "bb"]
+)
+
+X2 <- factor(c("BB", "Bb", "bb"))
+
+logit_fit <- glm(cbind(cases, controls) ~ X2,
+                 family = binomial)
+
+summary(logit_fit)          
+exp(coef(logit_fit))        
+exp(confint(logit_fit))
+```
+
+The logistic regression model shows that the SNP2 genotype strongly affects the probability of having Crohn’s disease. The estimated odds ratio for the Bb genotype relative to BB is about 0.047, indicating that Bb is associated with greatly reduced disease odds. The odds ratio for the bb genotype relative to BB is about 1.41, indicating moderately increased disease odds. Overall, the regression results show that Bb appears protective, while bb increases the odds of disease compared to the BB genotype.

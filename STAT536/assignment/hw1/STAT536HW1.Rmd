@@ -1,0 +1,176 @@
+---
+title: "STAT536HW1"
+author: "Bryan Ng, 2427348"
+date: "2025-10-03"
+output: pdf_document
+---
+
+```{r, warning=FALSE}
+library(haven)
+df <- read_dta("MROZ.dta")
+```
+
+\section{Question 1}
+
+We exclude the variables hours, wage, lwage, and faminc because they are direct outcomes of labor force participation and thus post-treatment. repwage is reported in 1976, after the response year, so it cannot be used as a predictor of the 1975 decision. Finally, hushrs reflects the husband’s hours worked, which is itself a labor supply outcome that may be jointly determined with the respondent’s participation decision, causing potential endogeneity.
+
+```{r, warning=FALSE}
+drop <- c("hours", "wage", "lwage", "faminc", "repwage", "hushrs")
+df_q1 <- df[ , setdiff(names(df), intersect(names(df), drop))]
+print(names(df_q1))
+```
+
+\section{Question 2}
+
+We decided to apply two transformations. First, we use $\log$(age), as the relationship between age and labor force participation is likely non-linear. Second, we transform nwifeinc as $\log$(nwifeinc+1) to reduce skewness in the distribution of non-wife income and to avoid potential influence of extreme values.
+
+```{r, warning=FALSE}
+df_q1$logage <- log(df_q1$age)
+df_q1$lognwife <- log(df_q1$nwifeinc + 1)
+summary(df_q1$logage)
+summary(df_q1$lognwife)
+```
+
+Clearly, $\log$(nwifeinc+1) ranges from about 0 to 4.57, reflecting a wide spread of non-wife income levels. The log transformation significantly reduces the skewness of nwifeinc, which is preferable for regression analysis.
+
+\section{Question 3}
+
+The initial model $M_0$ includes kidslt6, educ, exper and expersq, huswage, lognwife, and logage. These variables are commonly used in labor economics studies and also show strong correlation with the response. Having young children and higher non-wife or husband income are expected to lower participation, while education and work experience generally raise it, with diminishing effects for additional experience. Age is included in logarithmic form to better capture the non-linear relationship between age and labor force participation.
+
+\section{Question 4}
+
+```{r}
+M0 <- glm(inlf ~ kidslt6 + educ + exper + expersq + huswage + lognwife + logage,
+          data = df_q1, family = binomial(link = "logit"))
+
+summary(M0)                        
+any(is.na(coef(summary(M0))[,"Std. Error"]))
+```
+
+The formula is given as:
+
+$$
+\begin{aligned}
+\text{logit}\{ P(\text{inlf} = 1 \mid X) \}
+= {} & 11.905 - 1.497 \cdot \text{kidslt6} + 0.222 \cdot \text{educ} \\
+     & + 0.208 \cdot \text{exper} - 0.00336 \cdot \text{expersq} \\
+     & - 0.011 \cdot \text{huswage} - 0.437 \cdot \text{lognwife} \\
+     & - 3.801 \cdot \text{logage}.
+\end{aligned}
+$$
+```{r}
+fitted <- fitted(M0)
+residuals <- rstandard(M0)
+plot(fitted, residuals,
+     main = "Residuals vs Fitted",
+     xlab = "Fitted probabilities",
+     ylab = "Standardized residuals",
+     pch = 16, col = "blue")
+```
+
+The residuals vs fitted plot shows that most standardized residuals are within 
+$[-2,2]$, with no large outliers. There is no clear curve pattern, 
+so the model seems well specified. The fitted values cover a wide range 
+between 0 and 1, which means the model gives useful variation in predicted 
+probabilities.
+
+\section{Question 5}
+
+```{r}
+M <- step(M0, direction = "both", trace = TRUE)
+summary(M)
+formula(M)
+```
+
+Stepwise selection using AIC removed huswage from the model. This suggests that after accounting for education, experience, young children, other household income, and age, the husband’s wage does not provide additional explanatory power for predicting women’s labor force participation in this dataset.
+
+\section{Question 6}
+
+```{r}
+M <- glm(inlf ~ kidslt6 + educ + exper + expersq + lognwife + logage,
+         data = df_q1, family = binomial("logit"))
+
+vars <- c("kidslt6", "educ", "exper", "expersq", "lognwife", "logage")
+
+lrt_results <- list()
+
+for (v in vars) {
+  reduced_formula <- as.formula(
+    paste("inlf ~", paste(setdiff(vars, v), collapse = " + "))
+  )
+  reduced_model <- glm(reduced_formula, data = df_q1, family = binomial("logit"))
+  
+  lrt <- anova(reduced_model, M, test = "LRT")
+  lrt_results[[v]] <- lrt
+  cat("\n### Dropping:", v, "###\n")
+  print(lrt)
+}
+
+```
+
+Likelihood ratio tests were conducted by sequentially removing one variable from the final model $M$. 
+The results show that dropping any variable leads to a significant increase in deviance. 
+Therefore, all variables in $M$ are statistically significant and the full model should be retained.
+
+\section{Question 7}
+
+```{r}
+M <- glm(inlf ~ kidslt6 + educ + exper + expersq + lognwife + logage,
+         data = df_q1, family = binomial("logit"))
+
+n <- nobs(M)
+vars <- c("kidslt6","educ","exper","expersq","lognwife","logage")
+
+bic_list <- list(
+  `Full M` = BIC(M)
+)
+
+for (v in vars) {
+  f_red <- as.formula(paste("inlf ~", paste(setdiff(vars, v), collapse = " + ")))
+  M_red <- glm(f_red, data = df_q1, family = binomial("logit"))
+  bic_list[[paste0("Drop ", v)]] <- BIC(M_red)
+}
+
+bic_table <- data.frame(
+  Model = names(bic_list),
+  BIC = unname(unlist(bic_list)),
+  row.names = NULL
+)
+bic_table <- bic_table[order(bic_table$BIC), ]
+print(bic_table)
+```
+
+Based on the BIC results, the full model $M$ has the lowest BIC. Dropping any variable increases the BIC slightly. Therefore, the full model provides the best balance between model fit and complexity and is preferred according to the BIC criterion.
+
+\section{Question 8}
+
+```{r}
+brier_score <- function(model, data) {
+  p_hat <- predict(model, type = "response")
+  y <- data$inlf
+  mean((p_hat - y)^2)
+}
+
+brier_list <- list("Full M" = brier_score(M, df_q1))
+
+for (v in vars) {
+  f_red <- as.formula(paste("inlf ~", paste(setdiff(vars, v), collapse = " + ")))
+  M_red <- glm(f_red, data = df_q1, family = binomial("logit"))
+  brier_list[[paste0("Drop ", v)]] <- brier_score(M_red, df_q1)
+}
+
+brier_table <- data.frame(
+  Model = names(brier_list),
+  Brier = round(unlist(brier_list), 4),
+  row.names = NULL
+)
+
+brier_table <- brier_table[order(brier_table$Brier), ]
+print(brier_table)
+```
+
+Based on the Brier score results, the full model $M$ has the lowest Brier score, meaning it provides the best predictive accuracy among the compared models. According to the Brier score, we should prefer the full model.
+
+\section{Question 9}
+
+The final model shows that young children and higher non-wife income significantly reduce women’s labor force participation, while education and work experience increase it, though with diminishing returns. Older age also lowers participation. All selected variables are statistically significant, confirming that both family circumstances and human capital strongly impact labor market decisions.

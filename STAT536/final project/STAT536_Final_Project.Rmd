@@ -1,0 +1,291 @@
+---
+title: "STAT536_Final_Project"
+author: "Bryan Ng, 2427348"
+date: "2025-12-02"
+output: pdf_document
+---
+
+\section{Problem 1}
+
+\subsection{Question 1}
+
+From the patterns in the three-way table, each pair of variables (Safety Equipment, Ejection, and Injury) shows a clear association. However, the three-way interaction does not add meaningful improvement. Therefore, the most suitable log-linear model is
+
+$$
+[AB][AC][BC]
+$$
+
+which keeps all two-way interactions but removes the three-way interaction.
+
+\subsection{Question 2}
+
+Using the selected log-linear model $[AB][AC][BC]$, the logistic regression for the probability of a fatal injury, given Safety Equipment $A$ and Ejection $B$, is
+
+$$
+\log \frac{P(C=1 \mid A,B)}{P(C=0 \mid A,B)}
+= \beta_0 + \beta_1 A + \beta_2 B + \beta_3 AB
+$$
+
+The estimated logits based on the observed fatality rates are:
+
+$$
+\text{logit}(p_{11}) = -4.37,\quad
+\text{logit}(p_{10}) = -4.45,\quad
+\text{logit}(p_{01}) = -2.33,\quad
+\text{logit}(p_{00}) = -5.05
+$$
+
+These values show that ejection has a very strong effect on fatality risk, increasing the chance of death by more than tenfold. The direct effect of safety equipment on fatal injury is much smaller; its main role is preventing ejection.
+
+\subsection{Question 3}
+
+```{r, echo=FALSE, warning=FALSE}
+data <- data.frame(
+  A = c(1,1,0,0),
+  B = c(1,0,1,0),
+  fatal = c(14,483,497,1008),
+  nonfatal = c(1105,41111,4624,157342)
+)
+
+data$Total <- data$fatal + data$nonfatal
+```
+
+```{r, echo=FALSE, warning=FALSE}
+model1 <- glm(cbind(fatal, nonfatal) ~ A, family = binomial, data = data)
+summary(model1)
+```
+
+This model includes only Safety Equipment.  
+The coefficient of $A$ is significant, but the residual deviance remains very large, which is 1639.8, indicating that this model does not explain the outcome well.
+Safety Equipment alone cannot account for the differences in fatality rates.
+
+```{r, echo=FALSE, warning=FALSE}
+model2 <- glm(cbind(fatal, nonfatal) ~ B, family = binomial, data = data)
+summary(model2)
+```
+
+This model uses only Ejection as a predictor.  The coefficient for $B$ is extremely large and highly significant.  The residual deviance drops dramatically from 1639.8 to 232.96. This shows that Ejection explains most of the variation in fatal injury risk and is a very strong predictor.
+
+
+```{r, echo=FALSE, warning=FALSE}
+model3 <- glm(cbind(fatal, nonfatal) ~ A + B, family = binomial, data = data)
+summary(model3)
+```
+
+Adding Safety Equipment to Ejection improves the fit further: the residual deviance decreases from 232.96 to 205.47.  Both predictors are significant.  However, the improvement is modest compared to the effect of including Ejection.  This suggests that the direct effect of Safety Equipment is real but much smaller than the effect of Ejection.
+
+```{r, echo=FALSE, warning=FALSE}
+model4 <- glm(cbind(fatal, nonfatal) ~ A + B + A:B, family = binomial, data = data)
+summary(model4)
+```
+
+Including the interaction term $A:B$ gives the best fit, with the residual deviance dropping to nearly zero.  All terms are highly significant.  The interaction is negative, meaning that the effect of Safety Equipment is different depending on whether a person is ejected or not.  Even so, the coefficient for $B$ remains the largest, confirming that ejection has the strongest influence on fatality.
+
+```{r, echo=FALSE, warning=FALSE}
+anova(model1, model2, model3, model4, test="Chisq")
+```
+
+The comparison of the models clearly shows that Ejection is the single most important factor determining whether an injury is fatal. 
+Models that exclude $B$ perform very poorly, while those that include it show dramatic reductions in deviance.  
+Safety Equipment has a smaller but still meaningful effect, mostly visible when combined with Ejection in Models 3 and 4.  
+The interaction model Model 4 fits the data best, but the main conclusion remains unchanged: 
+Ejection dominates the prediction of fatal injury, and the role of Safety Equipment is largely related to preventing ejection rather than directly lowering fatality risk.
+
+\subsection{Question 4}
+
+The results indicate that ejection is the most important factor affecting injury severity. Being ejected raises the probability of a fatal outcome dramatically. Safety equipment helps mainly because it reduces the chance of being ejected, not because it directly lowers fatality risk. Thus, the relationship among the variables is
+
+$$
+\text{Safety Equipment} \;\longrightarrow\; \text{Ejection} \;\longrightarrow\; \text{Injury Severity}
+$$
+
+Overall, ejection is the strongest predictor of whether an injury is fatal.
+
+\section{Problem 2}
+
+```{r, echo=FALSE, warning=FALSE}
+library(gRim)
+
+counts <- c(
+  44, 40, 112, 67,
+  129, 145, 12, 23,
+
+  35, 12, 80, 33,
+  109, 67, 7, 9,
+
+  23, 32, 70, 66,
+  50, 80, 7, 13,
+
+  24, 25, 73, 57,
+  51, 63, 7, 16,
+
+  5, 7, 21, 9,
+  9, 17, 1, 4,
+
+  4, 3, 11, 8,
+  14, 17, 5, 2,
+
+  7, 3, 14, 14,
+  9, 16, 2, 3,
+
+  4, 0, 13, 11,
+  5, 14, 4, 4
+)
+
+tab <- array(
+  counts,
+  dim = c(2, 2, 2, 2, 2, 2),
+  dimnames = list(
+    F = c("neg", "pos"),
+    E = c("<3", ">=3"),
+    D = c("<140", ">=140"),
+    C = c("no", "yes"),
+    B = c("no", "yes"),
+    A = c("no", "yes")
+  )
+)
+
+m.sat  <- dmod(~ A * B * C * D * E * F, data = tab)  
+m.step <- stepwise(m.sat, k = 2)                     
+summary(m.step)
+
+df <- as.data.frame(as.table(tab))
+
+fit_null <- glm(
+  F ~ 1,
+  family = binomial,
+  data = df,
+  weights = Freq
+)
+summary(fit_null)
+
+fit_full <- glm(
+  F ~ A + B + C + D + E,
+  family = binomial,
+  data = df,
+  weights = Freq
+)
+
+summary(fit_full)
+anova(fit_null, fit_full, test = "Chisq")
+```
+
+To identify an appropriate loglinear model for the $2^6$ contingency table, I fitted a sequence of hierarchical graphical loglinear models using stepwise selection based on AIC. The selected model retained all interaction terms between $F$ and $B$, $C$, and $D$, whereas no interaction with $A$ or $E$ was supported. This implies that $F$ is conditionally independent of $A$ and $E$ given the remaining variables, but not independent of $B$, $C$, or $D$.
+
+To further investigate the determinants of $F$, I estimated a logistic regression model using the cell frequencies as weights. Comparison of the null model,
+
+$$
+\log\frac{P(F=1)}{P(F=0)} = \beta_0
+$$
+with an additive model,
+
+$$
+\log\frac{P(F=1)}{P(F=0)}
+= \beta_0 + \beta_A A + \beta_B B + \beta_C C + \beta_D D + \beta_E E
+$$
+
+yields a highly significant likelihood ratio test ($\chi^2 = 65.56$, $p < 10^{-12}$), indicating that the predictors jointly improve model fit.
+
+The coefficient estimates show that $B$, $C$, and $D$ have strong and significant effects on $F$, whereas $A$ and $E$ do not. Thus, the loglinear and logistic analyses consistently identify $B$, $C$, and $D$ as the direct determinants of $F$.
+
+In summary, both the loglinear and logistic regression analyses consistently indicate that $B$, $C$, and $D$ are directly associated with $F$, while $A$ and $E$ exhibit no significant relationship with $F$ once the other variables are taken into account. Therefore, in modeling $F$, the appropriate covariates are $B$, $C$, and $D$, whereas $A$ and $E$ can be excluded without loss of explanatory power.
+
+\newpage
+
+# Appendix: R Code for 536 Final Project
+
+# Problem 1 Question 3
+
+```r
+data <- data.frame(
+  A = c(1,1,0,0),
+  B = c(1,0,1,0),
+  fatal = c(14,483,497,1008),
+  nonfatal = c(1105,41111,4624,157342)
+)
+
+data$Total <- data$fatal + data$nonfatal
+
+model1 <- glm(cbind(fatal, nonfatal) ~ A, family = binomial, data = data)
+summary(model1)
+
+model2 <- glm(cbind(fatal, nonfatal) ~ B, family = binomial, data = data)
+summary(model2)
+
+model3 <- glm(cbind(fatal, nonfatal) ~ A + B, family = binomial, data = data)
+summary(model3)
+
+model4 <- glm(cbind(fatal, nonfatal) ~ A + B + A:B, family = binomial, data = data)
+summary(model4)
+
+anova(model1, model2, model3, model4, test="Chisq")
+```
+
+# Problem 2
+
+```r
+library(gRim)
+
+counts <- c(
+  44, 40, 112, 67,
+  129, 145, 12, 23,
+
+  35, 12, 80, 33,
+  109, 67, 7, 9,
+
+  23, 32, 70, 66,
+  50, 80, 7, 13,
+
+  24, 25, 73, 57,
+  51, 63, 7, 16,
+
+  5, 7, 21, 9,
+  9, 17, 1, 4,
+
+  4, 3, 11, 8,
+  14, 17, 5, 2,
+
+  7, 3, 14, 14,
+  9, 16, 2, 3,
+
+  4, 0, 13, 11,
+  5, 14, 4, 4
+)
+
+tab <- array(
+  counts,
+  dim = c(2, 2, 2, 2, 2, 2),
+  dimnames = list(
+    F = c("neg", "pos"),
+    E = c("<3", ">=3"),
+    D = c("<140", ">=140"),
+    C = c("no", "yes"),
+    B = c("no", "yes"),
+    A = c("no", "yes")
+  )
+)
+
+m.sat  <- dmod(~ A * B * C * D * E * F, data = tab)  
+m.step <- stepwise(m.sat, k = 2)                     
+summary(m.step)
+
+df <- as.data.frame(as.table(tab))
+
+fit_null <- glm(
+  F ~ 1,
+  family = binomial,
+  data = df,
+  weights = Freq
+)
+summary(fit_null)
+
+fit_full <- glm(
+  F ~ A + B + C + D + E,
+  family = binomial,
+  data = df,
+  weights = Freq
+)
+
+summary(fit_full)
+anova(fit_null, fit_full, test = "Chisq")
+```

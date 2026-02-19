@@ -1,0 +1,65 @@
+---
+title: "STAT536HW6"
+author: "Bryan Ng, 2427348"
+date: "2025-11-28"
+output: pdf_document
+---
+
+
+```{r, warning = FALSE}
+library(MASS)
+
+df <- array(
+  c(
+    1167, 377, 186,
+    763, 225, 130,
+    107, 29, 11,
+    
+    1509, 16, 179,
+    234, 2, 19,
+    14, 0, 2
+  ),
+  dim = c(2, 3, 3),
+  dimnames = list(
+    Disease = c("No", "Yes"),
+    SNP1 = c("AA", "Aa", "aa"),
+    SNP2 = c("BB", "Bb", "bb")
+  )
+)
+
+df
+```
+
+Table 1 presents a 2×3×3 contingency table that cross classifies 4,970 individuals according to their disease status, the genotype at SNP 1, and the genotype at SNP 2. In the following analysis, we compare three hierarchical log-linear models.
+(1) the complete independence model
+(2) a model including all pairwise interactions but no three-way interaction, and
+(3) the saturated model containing the full three-way interaction.
+
+```{r, warning = FALSE}
+fit_indep <- loglm(~ Disease + SNP1 + SNP2, data = df)
+summary(fit_indep)
+```
+
+The complete independence model assumes that Disease, SNP1, and SNP2 are mutually independent. The likelihood-ratio test strongly rejects this model (LR = 4746.35, df = 12, p < 0.001), indicating that the joint distribution of the three variables cannot be explained by independent main effects alone. This result implies that substantial associations exist among the variables: disease status is related to one or both SNPs, and the two SNPs are not independent of each other. Therefore, the complete independence model fails to capture the structure in the data and is not an adequate description of the observed counts.
+
+```{r, warning = FALSE}
+fit_pairwise <- loglm(~ Disease + SNP1 + SNP2 +
+                        Disease:SNP1 + Disease:SNP2 + SNP1:SNP2,
+                      data = df)
+summary(fit_pairwise)
+```
+
+The pairwise interaction model includes all two-way interactions among Disease, SNP1, and SNP2, but excludes the three-way interaction. Although this model allows flexible pairwise associations, it still provides a poor fit to the data (LR = 187.62, df = 4, p < 0.001). The significant lack of fit indicates that the relationships among the three variables cannot be fully explained by pairwise effects alone. In particular, the effect of one SNP on disease risk appears to depend on the genotype at the other SNP. Thus, the results suggest the presence of a higher-order interaction and motivate the inclusion of a three-way term.
+
+```{r, warning = FALSE}
+fit_saturated <- loglm(~ Disease*SNP1*SNP2, data = df)
+summary(fit_saturated)
+```
+
+The saturated model includes the full three-way interaction among Disease, SNP1, and SNP2, allowing the expected counts to match the observed data exactly. As expected, this model yields zero deviance and fits perfectly. When compared to the inadequate pairwise interaction model, the improvement in fit confirms that the three-way interaction is necessary to describe the joint distribution of the variables. This finding provides strong evidence for a significant Disease × SNP1 × SNP2 interaction, suggesting that the combined genotypes at the two SNP loci jointly influence disease risk in a manner that cannot be decomposed into simpler pairwise associations.
+
+```{r, warning = FALSE}
+anova(fit_indep, fit_pairwise, fit_saturated)
+```
+
+Performing anova test allows us to formally compare three nested log-linear models and test whether higher-order interactions are required. The likelihood-ratio tests show that both pairwise interactions and the three-way Disease × SNP1 × SNP2 interaction are statistically necessary, providing strong evidence for gene–gene interaction in the joint relationship with disease status.

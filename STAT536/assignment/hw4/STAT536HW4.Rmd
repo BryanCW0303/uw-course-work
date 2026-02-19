@@ -1,0 +1,142 @@
+---
+title: "STAT536HW4"
+author: "Bryan Ng, 2427348"
+date: "2025-11-08"
+output: pdf_document
+---
+
+```{r, warning=FALSE}
+data <- matrix(c(28, 656,
+                 18, 658),
+               nrow = 2, byrow = TRUE,
+               dimnames = list(Treatment = c("Placebo","Aspirin"),
+                               MI        = c("Yes","No")))
+data
+```
+
+\section{Q1}
+
+```{r}
+row_totals <- rowSums(data)
+col_totals <- colSums(data)
+grand_total <- sum(data)
+
+row_totals; col_totals; grand_total
+```
+
+\section{Q2}
+
+```{r}
+r <- rowSums(data)
+c <- colSums(data)
+N <- sum(data)
+
+bounds_2x2 <- function(r, c, N){
+  L11 <- max(0, r[1] + c[1] - N); U11 <- min(r[1], c[1])
+  L12 <- max(0, r[1] + c[2] - N); U12 <- min(r[1], c[2])
+  L21 <- max(0, r[2] + c[1] - N); U21 <- min(r[2], c[1])
+  L22 <- max(0, r[2] + c[2] - N); U22 <- min(r[2], c[2])
+  data.frame(cell = c("a11(Placebo-Yes)","a12(Placebo-No)",
+                      "a21(Aspirin-Yes)","a22(Aspirin-No)"),
+             lower = c(L11,L12,L21,L22),
+             upper = c(U11,U12,U21,U22))
+}
+bounds_2x2(r, c, N)
+
+```
+
+This means the first cell, which reflects to Placebo–Yes, can vary from 0 to 46 while keeping all margins constant, and the other cells adjust accordingly.
+Therefore, there are 47 valid tables that satisfy the given row and column totals.
+
+\section{Q3}
+
+```{r}
+L11 <- max(0, r[1] + c[1] - N); U11 <- min(r[1], c[1])
+
+num_tables <- U11 - L11 + 1
+num_tables
+
+all_tables <- data.frame(
+  a11 = L11:U11,
+  a12 = r[1] - (L11:U11),
+  a21 = c[1] - (L11:U11),
+  a22 = N - (L11:U11) - (r[1] - (L11:U11)) - (c[1] - (L11:U11))
+)
+head(all_tables)
+
+```
+
+
+\section{Q4}
+
+```{r}
+expected_saturated <- data
+expected_saturated
+```
+
+Under the saturated model, it is clear that the expected counts match the observed counts exactly.
+
+\section{Q5}
+
+```{r}
+chi_ind <- chisq.test(data, correct = FALSE)
+expected_independence <- chi_ind$expected
+expected_independence
+
+```
+
+Under the independence model, expected counts differ slightly from the observed values, reflecting a weak association.
+
+\section{Q6}
+
+```{r}
+test_res <- chisq.test(data, correct = FALSE)
+test_res$statistic   
+test_res$parameter   
+test_res$p.value    
+test_res             
+```
+
+The Pearson chi-square test indicates no significant relationship between aspirin use and myocardial infarction.
+
+
+\section{Q7}
+
+```{r}
+expected <- chisq.test(data, correct = FALSE)$expected
+
+G2 <- 2 * sum(data * log(data / expected))
+df <- (nrow(data) - 1) * (ncol(data) - 1)
+p_value_G2 <- 1 - pchisq(G2, df)
+p_value_G2
+```
+
+The likelihood-ratio test also leads to the same as the Pearson chi-square test, indicating no significant relationship between aspirin use and myocardial infarction.
+
+\section{Q8}
+
+```{r}
+fisher_test <- fisher.test(data, alternative = "two.sided")
+fisher_test
+```
+
+Fisher’s exact test also fails to reject independence; the odds ratio confidence interval includes 1.
+
+\section{Q9}
+
+```{r}
+odds_yes <- data["Placebo","Yes"] / data["Aspirin","Yes"]
+odds_no  <- data["Placebo","No"]  / data["Aspirin","No"]
+
+log_ratio_yes <- log(odds_yes)
+log_ratio_no  <- log(odds_no)
+
+cat("log odds ratio given MI=Yes:", log_ratio_yes, "\n")
+cat("log odds ratio given MI=No :", log_ratio_no, "\n")
+```
+
+The log-odds ratio shows that the placebo group has slightly higher MI odds.
+
+\section{Q10}
+
+Overall, all tests suggest that aspirin use is not significantly associated with myocardial infarction in this dataset.
